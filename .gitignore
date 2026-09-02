@@ -1,0 +1,30 @@
+# Built artifacts
+/.gradle/
+/build/
+/app/build/
+/captures/
+/local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# IDE
+/.idea/
+*.iml
+.DS_Store
+*.swp
+
+# Nested cloud repo (lives in sibling GitHub repo)
+/hassan-cloud/
+
+# Local/temp
+/frishta-screen.png
+/_tmp*
+*.log
+.cxx/
+
+hassan_cloud_prefs.xml
+.cursor/
+

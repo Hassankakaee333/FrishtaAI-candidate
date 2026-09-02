@@ -1,0 +1,22 @@
+---
+description: اختبار Hassan على هاتف المستخدم بعد كل تعديل
+alwaysApply: true
+---
+
+# اختبار على الهاتف بعد كل تعديل
+
+بعد أي تعديل على مشروع Hassan Android (`HassanAI-Candidate-DeviceFix-20260902`):
+
+1. **ابنِ** `assembleCandidateDebug` (أو `connectedCandidateDebugAndroidTest` عند الحاجة).
+2. **ثبّت** APK على هاتف المستخدم عبر adb:
+   - الجهاز الافتراضي: `R5CY42L1GFY`
+   - الحزمة: `ai.hassan.app.candidate`
+   - المسار: `app/build/outputs/apk/candidate/debug/app-candidate-debug.apk`
+3. **اختبر فعلياً** على الهاتف — لا تكتفِ بالبناء فقط:
+   - يُفضَّل `adb install -r` أولاً ثم تشغيل اختبارات محددة، أو
+   - شغّل `connectedCandidateDebugAndroidTest` (مُفعَّل في `gradle.properties`: `leaveApksInstalledAfterRun=true` حتى لا يُزال التطبيق بعد الاختبار).
+   - **ممنوع** تشغيل `adb uninstall` أو أي أمر يزيل التطبيق من هاتف المستخدم.
+4. **أعد التثبيت** بـ `adb install -r` بعد الاختبارات إن لزم، وتأكد أن `ai.hassan.app.candidate` ما زال موجوداً.
+5. **أبلغ المستخدم** بنتيجة الاختبار (نجاح/فشل + ما تم التحقق منه).
+
+لا تُنهِ مهمة تطوير Android دون تثبيت واختبار على الهاتف ما لم يكن الجهاز غير متصل — عندها أبلغ صراحةً واطلب توصيل الهاتف.

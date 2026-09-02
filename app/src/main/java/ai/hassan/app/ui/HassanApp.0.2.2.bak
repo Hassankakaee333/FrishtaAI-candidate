@@ -1,0 +1,690 @@
+package ai.hassan.app.ui
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.AddTask
+import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.HealthAndSafety
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Inbox
+import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.Policy
+import androidx.compose.material.icons.rounded.Radar
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.TaskAlt
+import androidx.compose.material.icons.rounded.Workspaces
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import ai.hassan.app.BuildConfig
+import ai.hassan.app.data.BridgeRequestEntity
+import ai.hassan.app.data.BridgeStatuses
+import ai.hassan.app.data.ConversationEntity
+import ai.hassan.app.data.DecisionEntity
+import ai.hassan.app.data.DecisionStatuses
+import ai.hassan.app.data.ExecutionPlanEntity
+import ai.hassan.app.data.MessageEntity
+import ai.hassan.app.data.MessageRoles
+import ai.hassan.app.data.ProjectEntity
+import ai.hassan.app.data.RadarFindingEntity
+import ai.hassan.app.data.RadarStatuses
+import ai.hassan.app.data.ResourceLedgerEntity
+import ai.hassan.app.data.TaskEntity
+import ai.hassan.app.data.TaskStatuses
+import ai.hassan.app.diagnostics.DiagnosticsCollector
+import ai.hassan.app.providers.CodexReasoningEffort
+import java.text.DateFormat
+import java.util.Date
+import kotlinx.coroutines.launch
+
+private enum class HassanScreen(val title: String, val icon: ImageVector) {
+    Home("Hassan AI", Icons.Rounded.Home),
+    Projects("المشاريع", Icons.Rounded.Workspaces),
+    Tasks("المهام", Icons.Rounded.TaskAlt),
+    Decisions("صندوق القرارات", Icons.Rounded.Inbox),
+    Providers("الموارد", Icons.Rounded.Cloud),
+    Radar("الرادار", Icons.Rounded.Radar),
+    Diagnostics("Diagnostics", Icons.Rounded.HealthAndSafety),
+    Settings("الإعدادات", Icons.Rounded.Settings),
+}
+
+private data class LeadOption(val id: String, val label: String)
+
+private val leadOptions = listOf(
+    LeadOption("auto", "Hassan Auto"),
+    LeadOption("chatgpt", "Codex 5.6 Sol"),
+    LeadOption("gemini", "Gemini"),
+    LeadOption("deepseek", "DeepSeek"),
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HassanApp(
+    viewModel: MainViewModel,
+    diagnosticsCollector: DiagnosticsCollector,
+    onApproveWithBiometric: (String) -> Unit,
+    onLaunchBridge: (String, String) -> Unit,
+    onCopyDiagnostics: (String) -> Unit,
+    onShareDiagnostics: (String) -> Unit,
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    var screen by remember { mutableStateOf(HassanScreen.Home) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+
+    BackHandler(enabled = screen != HassanScreen.Home && drawerState.isClosed) {
+        screen = HassanScreen.Home
+    }
+
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                ModalDrawerSheet {
+                    DrawerHeader()
+                    HassanScreen.entries.forEach { item ->
+                        NavigationDrawerItem(
+                            label = { Text(item.title) },
+                            selected = screen == item,
+                            onClick = {
+                                screen = item
+                                scope.launch { drawerState.close() }
+                            },
+                            icon = { Icon(item.icon, contentDescription = null) },
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                }
+            },
+        ) {
+            Scaffold(
+                topBar = {
+                    CenterAlignedTopAppBar(
+                        title = { Text(screen.title, fontWeight = FontWeight.SemiBold) },
+                        navigationIcon = {
+                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                Icon(Icons.Rounded.Menu, contentDescription = "القائمة")
+                            }
+                        },
+                        actions = { if (BuildConfig.CHANNEL == "candidate") ChannelBadge() },
+                    )
+                },
+            ) { contentPadding ->
+                Box(Modifier.fillMaxSize().padding(contentPadding)) {
+                    when (screen) {
+                        HassanScreen.Home -> ChatHomeScreen(
+                            state = state,
+                            onSelectLead = viewModel::selectLeadBrain,
+                            onSelectCodexEffort = viewModel::selectCodexReasoningEffort,
+                            onSend = viewModel::sendMessage,
+                            onLaunchBridge = onLaunchBridge,
+                        )
+                        HassanScreen.Projects -> ProjectsScreen(state.projects)
+                        HassanScreen.Tasks -> TasksScreen(state.tasks)
+                        HassanScreen.Decisions -> DecisionsScreen(
+                            decisions = state.decisions,
+                            onApprove = onApproveWithBiometric,
+                            onReject = viewModel::rejectDecision,
+                        )
+                        HassanScreen.Providers -> ProvidersScreen(state.resources)
+                        HassanScreen.Radar -> RadarScreen(state.radarFindings, viewModel::runRadar)
+                        HassanScreen.Diagnostics -> DiagnosticsScreen(
+                            collector = diagnosticsCollector,
+                            state = state,
+                            onCopy = onCopyDiagnostics,
+                            onShare = onShareDiagnostics,
+                        )
+                        HassanScreen.Settings -> SettingsScreen()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatHomeScreen(
+    state: HassanUiState,
+    onSelectLead: (String) -> Unit,
+    onSelectCodexEffort: (String) -> Unit,
+    onSend: (String) -> Unit,
+    onLaunchBridge: (String, String) -> Unit,
+) {
+    val conversation = state.conversations.firstOrNull()
+    val messages = state.messages.filter { it.conversationId == conversation?.id }
+    val plan = state.plans.firstOrNull { it.conversationId == conversation?.id }
+    val bridge = state.bridgeRequests.firstOrNull {
+        it.conversationId == conversation?.id && it.status == BridgeStatuses.PENDING
+    }
+    var composer by remember { mutableStateOf("") }
+    val messageListState = rememberLazyListState()
+
+    LaunchedEffect(messages.lastOrNull()?.id) {
+        if (messages.isNotEmpty()) messageListState.animateScrollToItem(messages.lastIndex)
+    }
+
+    Column(Modifier.fillMaxSize().testTag("chat_home")) {
+        ProjectAndStateHeader(conversation)
+        Text(
+            "العقل القائد",
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(leadOptions, key = { it.id }) { option ->
+                FilterChip(
+                    selected = conversation?.leadBrainId == option.id,
+                    onClick = { onSelectLead(option.id) },
+                    label = { Text(option.label) },
+                    modifier = Modifier.testTag("lead_${option.id}"),
+                )
+            }
+        }
+        if (conversation?.leadBrainId == "chatgpt") {
+            Text(
+                "مستوى تفكير Codex",
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.testTag("codex_effort_selector"),
+            ) {
+                items(CodexReasoningEffort.entries, key = { it.apiValue }) { effort ->
+                    FilterChip(
+                        selected = conversation.codexReasoningEffort == effort.apiValue,
+                        onClick = { onSelectCodexEffort(effort.apiValue) },
+                        label = { Text(effort.arabicLabel) },
+                        modifier = Modifier.testTag("effort_${effort.apiValue}"),
+                    )
+                }
+            }
+            Text(
+                CodexReasoningEffort.fromApiValue(conversation.codexReasoningEffort).guidance,
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        LazyColumn(
+            state = messageListState,
+            modifier = Modifier.weight(1f).fillMaxWidth().testTag("conversation_list"),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(messages, key = { it.id }) { message -> MessageBubble(message) }
+            if (plan != null) item(key = "plan:${plan.id}") { PlanCard(plan) }
+            if (bridge != null) {
+                item(key = "bridge:${bridge.id}") {
+                    HumanBridgeCard(bridge, onLaunchBridge)
+                }
+            }
+        }
+        HorizontalDivider()
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedTextField(
+                value = composer,
+                onValueChange = { composer = it },
+                modifier = Modifier.weight(1f).testTag("composer"),
+                placeholder = { Text("اكتب ما تريد…") },
+                minLines = 1,
+                maxLines = 4,
+            )
+            IconButton(
+                onClick = {
+                    onSend(composer)
+                    composer = ""
+                },
+                enabled = composer.isNotBlank(),
+                modifier = Modifier.testTag("send_message"),
+            ) {
+                Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = "إرسال")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProjectAndStateHeader(conversation: ConversationEntity?) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+    ) {
+        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("مشروع Hassan AI", fontWeight = FontWeight.Bold)
+                Text("الكلفة الإضافية: 0", style = MaterialTheme.typography.bodySmall)
+            }
+            Text(
+                stateLabel(conversation?.state ?: "DISCUSSING"),
+                modifier = Modifier.testTag("conversation_state").background(
+                    MaterialTheme.colorScheme.surface,
+                    RoundedCornerShape(999.dp),
+                ).padding(horizontal = 10.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MessageBubble(message: MessageEntity) {
+    val isUser = message.role == MessageRoles.USER
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (isUser) Arrangement.Start else Arrangement.End,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(0.88f).background(
+                if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                RoundedCornerShape(18.dp),
+            ).padding(13.dp),
+        ) {
+            Text(
+                when (message.role) {
+                    MessageRoles.USER -> "أنت"
+                    MessageRoles.PROVIDER -> message.providerId ?: "العامل"
+                    else -> "Hassan"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(message.content)
+        }
+    }
+}
+
+@Composable
+private fun PlanCard(plan: ExecutionPlanEntity) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth().testTag("plan_card")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.Policy, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text("ExecutionPlan", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                StatusChip(plan.status)
+            }
+            Text(plan.summary)
+            Text("المكونات", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text(plan.components)
+            Text("المخاطر: ${plan.risks}", style = MaterialTheme.typography.bodySmall)
+            Text("التحقق: ${plan.verification}", style = MaterialTheme.typography.bodySmall)
+            Text("الرجوع: ${plan.rollback}", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun HumanBridgeCard(bridge: BridgeRequestEntity, onLaunch: (String, String) -> Unit) {
+    ElevatedCard(colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("مطلوب جسر بشري آمن", fontWeight = FontWeight.Bold)
+            Text("سيرسل Android الـTaskPack إلى التطبيق المختار. لا Accessibility ولا scraping ولا API مدفوعة.")
+            Button(
+                onClick = { onLaunch(bridge.providerId, bridge.taskPackText) },
+                modifier = Modifier.fillMaxWidth().testTag("bridge_send"),
+            ) {
+                Icon(Icons.Rounded.Share, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("إرسال TaskPack إلى ${bridge.providerId}")
+            }
+        }
+    }
+}
+
+@Composable
+private fun DrawerHeader() {
+    Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(52.dp).background(MaterialTheme.colorScheme.primary, CircleShape), contentAlignment = Alignment.Center) {
+            Text("H", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column {
+            Text("Hassan AI", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text("Personal AI Command Center", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+private fun ChannelBadge() {
+    AssistChip(
+        onClick = {},
+        label = { Text("Candidate") },
+        leadingIcon = { Icon(Icons.Rounded.Policy, contentDescription = null, Modifier.size(18.dp)) },
+        modifier = Modifier.padding(horizontal = 8.dp),
+    )
+}
+
+@Composable
+private fun ProjectsScreen(projects: List<ProjectEntity>) {
+    LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        items(projects, key = { it.id }) { project ->
+            ElevatedCard {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Rounded.Apps, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Text(project.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(project.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    AssistChip(onClick = {}, label = { Text("المشروع الحالي") })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TasksScreen(tasks: List<TaskEntity>) {
+    if (tasks.isEmpty()) {
+        EmptyState("لا توجد مهام بعد", "تنشأ المهام من المحادثة أو Share Sheet.")
+        return
+    }
+    LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        items(tasks, key = { it.id }) { task ->
+            ElevatedCard {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(task.title, Modifier.weight(1f), fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        StatusChip(task.status)
+                    }
+                    Text(task.payload, maxLines = 3, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${task.source} · ${shortDate(task.updatedAt)}", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DecisionsScreen(decisions: List<DecisionEntity>, onApprove: (String) -> Unit, onReject: (String) -> Unit) {
+    LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (decisions.isEmpty()) item { EmptyStateContent("لا توجد قرارات", "ستظهر هنا القرارات عالية المخاطر.") }
+        items(decisions, key = { it.id }) { decision ->
+            ElevatedCard {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Rounded.Inbox, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.width(10.dp))
+                        Text(decision.title, Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                        StatusChip(decision.status)
+                    }
+                    Text(decision.summary)
+                    if (decision.status == DecisionStatuses.PENDING) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(onClick = { onApprove(decision.id) }, modifier = Modifier.weight(1f)) { Text("اعتماد بالبصمة") }
+                            OutlinedButton(onClick = { onReject(decision.id) }, modifier = Modifier.weight(1f)) { Text("رفض") }
+                        }
+                    } else if (decision.signatureVerified == true) {
+                        Text("تم التوقيع والتحقق محليًا", color = Color(0xFF17824B), fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProvidersScreen(resources: List<ResourceLedgerEntity>) {
+    LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item { Text("Resource Ledger — الكلفة الفعلية لجميع الموارد: 0", fontWeight = FontWeight.Bold) }
+        items(resources, key = { it.providerId }) { resource ->
+            ElevatedCard {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(resource.displayName, Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                        StatusChip(resource.costClass)
+                    }
+                    Text("الحصة: ${resource.quotaRemaining}")
+                    Text("الخصوصية: ${resource.privacy} · الترخيص: ${resource.license}", style = MaterialTheme.typography.bodySmall)
+                    Text("Human‑Gated: ${if (resource.requiresHumanBridge) "نعم" else "لا"} · Card: ${if (resource.cardRequired) "مطلوبة — محظور" else "لا"}")
+                    Text("Actual money cost: ${resource.actualMoneyCostCents}", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RadarScreen(findings: List<RadarFindingEntity>, onRunRadar: () -> Unit) {
+    LazyColumn(
+        modifier = Modifier.testTag("radar_list"),
+        contentPadding = PaddingValues(18.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Text("يفحص إصدارات مستودعات رسمية مفتوحة المصدر فقط. لا يفعّل أي مورد تلقائيًا.")
+            Spacer(Modifier.height(10.dp))
+            Button(onClick = onRunRadar, modifier = Modifier.fillMaxWidth().testTag("run_radar")) {
+                Icon(Icons.Rounded.Radar, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("افحص المصادر المجانية الآن")
+            }
+        }
+        if (findings.isEmpty()) item { EmptyStateContent("لا توجد نتائج بعد", "شغّل الفحص الأول؛ النتائج تُحفظ في Room.", Icons.Rounded.Radar) }
+        items(findings, key = { it.id }) { finding ->
+            ElevatedCard(modifier = Modifier.testTag("radar_finding")) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(finding.title, Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                        StatusChip(finding.status)
+                    }
+                    Text(finding.summary)
+                    Text("${finding.costClass} · ${finding.license} · ${finding.version}", style = MaterialTheme.typography.labelMedium)
+                    Text(finding.sourceUrl, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticsScreen(
+    collector: DiagnosticsCollector,
+    state: HassanUiState,
+    onCopy: (String) -> Unit,
+    onShare: (String) -> Unit,
+) {
+    var refreshKey by remember { mutableIntStateOf(0) }
+    val base = remember(refreshKey) { collector.collect() }
+    val conversation = state.conversations.firstOrNull()
+    val dynamicLines = listOf(
+        "Free-only status: ACTIVE / immutable",
+        "Conversation: ${stateLabel(conversation?.state ?: "DISCUSSING")}",
+        "Provider resources: ${state.resources.size}",
+        "Last radar: ${state.radarFindings.maxOfOrNull { it.lastVerifiedAt }?.let(::shortDate) ?: "لم يعمل"}",
+        "Evidence bundles: ${state.evidenceBundles.size}",
+        "Last Candidate: ${BuildConfig.VERSION_NAME}",
+    )
+    val fullReport = base.asPlainText() + dynamicLines.joinToString("\n", prefix = "\n", postfix = "\n")
+    LazyColumn(
+        modifier = Modifier.testTag("diagnostics_list"),
+        contentPadding = PaddingValues(18.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalButton(onClick = { refreshKey++ }, modifier = Modifier.weight(1f)) { Icon(Icons.Rounded.Refresh, null); Text("تحديث") }
+                FilledTonalButton(onClick = { onCopy(fullReport) }, modifier = Modifier.weight(1f)) { Icon(Icons.Rounded.ContentCopy, null); Text("نسخ") }
+                FilledTonalButton(onClick = { onShare(fullReport) }, modifier = Modifier.weight(1f)) { Icon(Icons.Rounded.Share, null); Text("مشاركة") }
+            }
+        }
+        items(dynamicLines, key = { it.substringBefore(':') }) { line -> DiagnosticCard(line.substringBefore(':'), line.substringAfter(':').trim()) }
+        items(base.items, key = { it.label }) { item -> DiagnosticCard(item.label, item.value) }
+    }
+}
+
+@Composable
+private fun DiagnosticCard(label: String, value: String) {
+    ElevatedCard {
+        Column(Modifier.padding(14.dp)) {
+            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.height(4.dp))
+            Text(value, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
+private fun SettingsScreen() {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ElevatedCard {
+            Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.HealthAndSafety, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("ZeroCostPolicy", fontWeight = FontWeight.Bold)
+                    Text("FREE وPREPAID مسموحان؛ METERED محظور في الكود.")
+                }
+                Switch(checked = true, onCheckedChange = null, enabled = false)
+            }
+        }
+        ElevatedCard {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("قوانين مالية غير قابلة للتعديل", fontWeight = FontWeight.Bold)
+                Text("additional_spend_limit = 0")
+                Text("paid_api_allowed = false")
+                Text("paid_gpu_allowed = false")
+                Text("auto_topup = false")
+                Text("agent_can_change_budget = false")
+            }
+        }
+        ElevatedCard {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("حدود Milestone 2", fontWeight = FontWeight.Bold)
+                Text("• لا نشر Stable تلقائي")
+                Text("• لا Accessibility أو scraping أو session extraction")
+                Text("• لا Media Factory أو self-evolution كامل")
+                Text("• Radar يكتشف ويحفظ فقط؛ لا يربط Provider تلقائيًا")
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusChip(status: String) {
+    val color = when (status) {
+        TaskStatuses.WAITING_DECISION, DecisionStatuses.PENDING, "AWAITING_USER_APPROVAL", "NEEDS_INPUT" -> MaterialTheme.colorScheme.errorContainer
+        TaskStatuses.APPROVED, DecisionStatuses.APPROVED, RadarStatuses.VERIFIED, "COMPLETED" -> MaterialTheme.colorScheme.primaryContainer
+        "EXECUTING", "VERIFYING", "QUEUED" -> MaterialTheme.colorScheme.tertiaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    Text(
+        stateLabel(status),
+        modifier = Modifier.background(color, RoundedCornerShape(999.dp)).padding(horizontal = 10.dp, vertical = 5.dp),
+        style = MaterialTheme.typography.labelSmall,
+    )
+}
+
+private fun stateLabel(state: String): String = when (state) {
+    "DISCUSSING" -> "يناقش"
+    "PLAN_READY", "AWAITING_USER_APPROVAL" -> "الخطة جاهزة"
+    "QUEUED" -> "في الطابور"
+    "EXECUTING", TaskStatuses.RUNNING -> "ينفذ"
+    "NEEDS_INPUT" -> "يحتاج جوابك"
+    "VERIFYING" -> "يتحقق"
+    "CANDIDATE_READY" -> "Candidate جاهز"
+    "COMPLETED", DecisionStatuses.APPROVED, TaskStatuses.APPROVED, RadarStatuses.VERIFIED -> "نجح"
+    "FAILED", RadarStatuses.FAILED -> "فشل"
+    "REJECTED", DecisionStatuses.REJECTED, TaskStatuses.REJECTED -> "مرفوض"
+    TaskStatuses.DRAFT -> "مسودة"
+    "FREE" -> "FREE"
+    "PREPAID" -> "PREPAID"
+    "METERED" -> "محظور"
+    else -> state
+}
+
+private fun shortDate(value: Long): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(value))
+
+@Composable
+private fun EmptyState(title: String, body: String, icon: ImageVector = Icons.Rounded.AddTask) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { EmptyStateContent(title, body, icon) }
+}
+
+@Composable
+private fun EmptyStateContent(title: String, body: String, icon: ImageVector = Icons.Rounded.AddTask) {
+    Column(
+        modifier = Modifier.padding(28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(icon, contentDescription = null, Modifier.size(52.dp), tint = MaterialTheme.colorScheme.primary)
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}

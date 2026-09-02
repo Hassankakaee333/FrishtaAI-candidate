@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "additional_spend_limit": 0,
+  "paid_api_allowed": false,
+  "paid_gpu_allowed": false,
+  "auto_topup": false,
+  "agent_can_change_budget": false,
+  "allowed_cost_classes": ["FREE", "PREPAID"],
+  "blocked_cost_classes": ["METERED"],
+  "stable_publish_authority": "HUMAN_OWNER_ONLY",
+  "constitution_mutation_authority": "NONE_AT_RUNTIME"
+}

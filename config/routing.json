@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "rules": {
+    "RESEARCH": ["official-radar", "gemini", "deepseek", "chatgpt"],
+    "WEB": ["official-radar", "gemini", "deepseek", "chatgpt"],
+    "REVIEW": ["deepseek", "chatgpt", "gemini"],
+    "CODING": ["chatgpt", "gemini", "deepseek"],
+    "BUILD": ["chatgpt", "gemini"],
+    "ANDROID_TEST": ["chatgpt", "gemini"]
+  },
+  "constraints": {
+    "reject_metered": true,
+    "reject_card_required": true,
+    "additional_cost_must_equal": 0,
+    "automatic_provider_enable": false
+  }
+}
