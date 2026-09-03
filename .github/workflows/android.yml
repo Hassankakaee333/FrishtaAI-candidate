@@ -27,6 +27,8 @@ jobs:
         run: |
           mkdir -p "$HOME/.android"
           cp app/signing/candidate-ci.keystore "$HOME/.android/debug.keystore"
+      - name: Ensure Gradle wrapper executable
+        run: chmod +x gradlew
       - name: Verify Android
         run: ./gradlew testCandidateDebugUnitTest lintCandidateDebug assembleStableDebug assembleCandidateDebug
       - name: Candidate SHA-256
