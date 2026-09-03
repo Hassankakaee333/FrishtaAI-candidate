@@ -233,14 +233,31 @@ class HassanRepository(
         val cloudId = artifact.id
         val dest = File(context.cacheDir, "artifacts/${artifact.name}")
         dest.parentFile?.mkdirs()
-        return hassanCloudApi.downloadArtifact(
+        val result = hassanCloudApi.downloadArtifact(
             settings.cloudBaseUrl,
             settings.accessToken,
             cloudId,
             dest,
-        ).onSuccess { file ->
+        )
+        result.onSuccess { file ->
             database.artifactDao().upsert(artifact.copy(localPath = file.absolutePath))
         }
+        result.exceptionOrNull()?.let { err ->
+            selfUpdateManager.notifyUser("تعذر تنزيل ${artifact.name}: ${err.message ?: "خطأ شبكة"}")
+        }
+        return result
+    }
+
+    suspend fun installCloudApk(artifact: ArtifactEntity): Result<Unit> {
+        val local = artifact.localPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0L }
+        val file = local ?: downloadArtifact(artifact).getOrElse { return Result.failure(it) }
+        val results = selfUpdateManager.installUpdateFromFile(file.absolutePath, backupFirst = true)
+        val error = results.filterIsInstance<SelfUpdateResult.Error>().firstOrNull()
+        if (error != null) {
+            selfUpdateManager.notifyUser(error.text)
+            return Result.failure(IllegalStateException(error.text))
+        }
+        return Result.success(Unit)
     }
 
     suspend fun updateRadarDecision(findingId: String, decision: String) {
@@ -957,7 +974,7 @@ class HassanRepository(
                 }
                 addHassanMessage(
                     conversationId,
-                    "اكتمل البناء السحابي. جارٍ تنزيل ${apk.name} وتجهيز التثبيت…",
+                    "اكتمل البناء السحابي. جارٍ تنزيل ${apk.name} مع إعادة المحاولة عند انقطاع الشبكة…",
                 )
                 val downloaded = downloadArtifact(apk)
                 downloaded.onSuccess { file ->
@@ -989,7 +1006,10 @@ class HassanRepository(
                 }.onFailure { err ->
                     addHassanMessage(
                         conversationId,
-                        "اكتمل البناء لكن تعذر تنزيل APK: ${err.message ?: "خطأ"}. يمكنك تنزيله من الملفات ثم «ثبت التحديث».",
+                        buildString {
+                            appendLine("اكتمل البناء لكن تعذر تنزيل APK بعد عدة محاولات: ${err.message ?: "خطأ شبكة"}.")
+                            appendLine("افتح «المهام» ثم «مزامنة» واضغط تنزيل على ${apk.name}، أو قل «ثبت التحديث» بعد التنزيل.")
+                        }.trim(),
                     )
                     selfImproveStore.markAnnounced(pendingJobId, "COMPLETED_DOWNLOAD_FAILED")
                 }

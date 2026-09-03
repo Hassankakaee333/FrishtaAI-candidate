@@ -29,6 +29,10 @@ class SelfUpdateManager(
     private val _events = MutableSharedFlow<SelfUpdateEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<SelfUpdateEvent> = _events.asSharedFlow()
 
+    suspend fun notifyUser(message: String) {
+        _events.emit(SelfUpdateEvent.Notify(message))
+    }
+
     fun hasBackup(): Boolean = backupApk.exists() && backupApk.length() > 0L
 
     fun hasStagedUpdate(): Boolean = stagedApk.exists() && stagedApk.length() > 0L

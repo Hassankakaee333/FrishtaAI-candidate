@@ -13,10 +13,27 @@ android {
         applicationId = "ai.hassan.app"
         minSdk = 33
         targetSdk = 36
-        versionCode = 29
-        versionName = "0.5.19"
+        versionCode = 30
+        versionName = "0.5.20"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+    }
+
+    signingConfigs {
+        // Same file as the local ~/.android/debug.keystore so CI APKs can
+        // `adb install -r` without INSTALL_FAILED_UPDATE_INCOMPATIBLE.
+        getByName("debug") {
+            storeFile = file("signing/candidate-ci.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+        create("candidateCi") {
+            storeFile = file("signing/candidate-ci.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     flavorDimensions += "channel"
@@ -32,6 +49,7 @@ android {
             versionNameSuffix = "-candidate"
             buildConfigField("String", "CHANNEL", "\"candidate\"")
             buildConfigField("String", "CANDIDATE_UPDATE_MANIFEST_URL", "\"\"")
+            signingConfig = signingConfigs.getByName("candidateCi")
         }
     }
 

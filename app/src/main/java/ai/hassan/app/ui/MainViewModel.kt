@@ -248,6 +248,10 @@ class MainViewModel(
         viewModelScope.launch { repository.downloadArtifact(artifact) }
     }
 
+    fun installCloudApk(artifact: ai.hassan.app.data.ArtifactEntity) {
+        viewModelScope.launch { repository.installCloudApk(artifact) }
+    }
+
     fun updateRadarDecision(findingId: String, decision: String) {
         viewModelScope.launch { repository.updateRadarDecision(findingId, decision) }
     }

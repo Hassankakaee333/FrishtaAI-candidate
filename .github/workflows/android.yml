@@ -23,6 +23,10 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v5
+      - name: Use candidate debug keystore
+        run: |
+          mkdir -p "$HOME/.android"
+          cp app/signing/candidate-ci.keystore "$HOME/.android/debug.keystore"
       - name: Verify Android
         run: ./gradlew testCandidateDebugUnitTest lintCandidateDebug assembleStableDebug assembleCandidateDebug
       - name: Candidate SHA-256

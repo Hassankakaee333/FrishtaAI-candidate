@@ -25,13 +25,24 @@ class AppContainer(context: Context) {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val database = HassanDatabase.create(context)
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(90, TimeUnit.SECONDS)
-        .callTimeout(100, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(180, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(0, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .build()
+
+    /** Longer timeouts for large APK artifacts (~50–80MB). */
+    private val downloadHttpClient = OkHttpClient.Builder()
+        .connectTimeout(45, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.MINUTES)
+        .writeTimeout(2, TimeUnit.MINUTES)
+        .callTimeout(0, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     val conversationSettingsStore = ConversationSettingsStore(context)
-    val hassanCloudApi = HassanCloudApi(httpClient)
+    val hassanCloudApi = HassanCloudApi(httpClient, downloadHttpClient)
     val identityManager = DeviceIdentityManager(context)
     val selfUpdateManager = SelfUpdateManager(context, httpClient)
 

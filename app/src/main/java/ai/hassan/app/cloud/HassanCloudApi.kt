@@ -7,6 +7,7 @@ import ai.hassan.app.conversation.ConversationMessage
 import ai.hassan.app.conversation.ConversationResult
 import ai.hassan.app.conversation.LocalHassanChat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -29,6 +30,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.net.URLEncoder
 import java.util.Base64
+import java.util.concurrent.TimeUnit
 
 /** Neon/HTTP often returns BIGINT fields as JSON strings. */
 object FlexibleLongSerializer : KSerializer<Long> {
@@ -153,6 +155,7 @@ data class CloudProjectConversationDto(
  */
 class HassanCloudApi(
     private val httpClient: OkHttpClient,
+    private val downloadHttpClient: OkHttpClient = httpClient,
     private val json: Json = Json { ignoreUnknownKeys = true },
 ) {
     suspend fun health(baseUrl: String): Result<CloudHealthResponse> = withContext(Dispatchers.IO) {
@@ -401,20 +404,44 @@ class HassanCloudApi(
         artifactId: String,
         dest: File,
     ): Result<File> = withContext(Dispatchers.IO) {
-        runCatching {
-            val request = Request.Builder()
-                .url("${baseUrl.trimEnd('/')}/v1/files/$artifactId")
-                .header("Authorization", "Bearer $token")
-                .get()
-                .build()
-            httpClient.newCall(request).execute().use { response ->
-                check(response.isSuccessful) { "HTTP ${response.code}" }
-                val bytes = response.body.bytes()
-                dest.parentFile?.mkdirs()
-                dest.writeBytes(bytes)
-                dest
+        val downloadClient = downloadHttpClient.newBuilder()
+            .connectTimeout(45, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.MINUTES)
+            .writeTimeout(2, TimeUnit.MINUTES)
+            .callTimeout(0, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+        var lastError: Throwable? = null
+        repeat(4) { attempt ->
+            val result = runCatching {
+                val request = Request.Builder()
+                    .url("${baseUrl.trimEnd('/')}/v1/files/$artifactId")
+                    .header("Authorization", "Bearer $token")
+                    .header("Accept", "*/*")
+                    .get()
+                    .build()
+                downloadClient.newCall(request).execute().use { response ->
+                    check(response.isSuccessful) { "HTTP ${response.code}" }
+                    dest.parentFile?.mkdirs()
+                    val tmp = File(dest.parentFile, "${dest.name}.part")
+                    response.body.byteStream().use { input ->
+                        tmp.outputStream().use { output -> input.copyTo(output, 64 * 1024) }
+                    }
+                    check(tmp.length() > 0L) { "ملف فارغ بعد التنزيل" }
+                    if (dest.exists()) dest.delete()
+                    check(tmp.renameTo(dest) || (dest.delete() && tmp.renameTo(dest))) {
+                        "تعذر حفظ الملف"
+                    }
+                    dest
+                }
             }
+            if (result.isSuccess) return@withContext result
+            lastError = result.exceptionOrNull()
+            dest.delete()
+            File(dest.parentFile, "${dest.name}.part").delete()
+            if (attempt < 3) delay(2_000L * (attempt + 1))
         }
+        Result.failure(lastError ?: IllegalStateException("تعذر تنزيل الملف"))
     }
 
     suspend fun getProjectWorkspace(

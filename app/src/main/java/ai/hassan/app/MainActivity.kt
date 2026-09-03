@@ -5,7 +5,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
@@ -97,6 +99,21 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun launchApkInstall(apkPath: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !packageManager.canRequestPackageInstalls()
+        ) {
+            Toast.makeText(
+                this,
+                "اسمح بتثبيت التطبيقات من Frishta ثم اضغط تثبيت مرة أخرى",
+                Toast.LENGTH_LONG,
+            ).show()
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                    data = Uri.parse("package:$packageName")
+                },
+            )
+            return
+        }
         runCatching {
             startActivity(ApkInstallLauncher.createInstallIntent(this, apkPath))
         }.onFailure {

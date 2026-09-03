@@ -318,6 +318,7 @@ fun HassanApp(
                             onSend = viewModel::sendMessage,
                             onLaunchBridge = onLaunchBridge,
                             onDownloadArtifact = viewModel::downloadArtifact,
+                            onInstallApk = viewModel::installCloudApk,
                             onOpenProjects = { screen = HassanScreen.Projects },
                             onOpenTasks = { screen = HassanScreen.Tasks },
                         )
@@ -339,6 +340,7 @@ fun HassanApp(
                             artifacts = state.artifacts,
                             onSync = viewModel::syncCloudJobs,
                             onDownloadArtifact = viewModel::downloadArtifact,
+                            onInstallApk = viewModel::installCloudApk,
                             onCancelCloudJob = viewModel::cancelCloudJob,
                             onClearFinished = viewModel::clearFinishedCloudJobs,
                             onDeleteLocal = viewModel::deleteCloudJobLocally,
@@ -489,6 +491,7 @@ private fun ChatHomeScreen(
     onSend: (String, List<PendingAttachment>) -> Unit,
     onLaunchBridge: (String, String) -> Unit,
     onDownloadArtifact: (ai.hassan.app.data.ArtifactEntity) -> Unit,
+    onInstallApk: (ai.hassan.app.data.ArtifactEntity) -> Unit = {},
     onOpenProjects: () -> Unit,
     onOpenTasks: () -> Unit = {},
 ) {
@@ -644,6 +647,7 @@ private fun ChatHomeScreen(
                     cloudJobs = state.cloudJobs,
                     artifacts = state.artifacts,
                     onDownloadArtifact = onDownloadArtifact,
+                    onInstallApk = onInstallApk,
                     onOpenProjects = onOpenProjects,
                 )
             }
@@ -839,6 +843,7 @@ private fun MessageBubble(
     cloudJobs: List<ai.hassan.app.data.CloudJobEntity> = emptyList(),
     artifacts: List<ai.hassan.app.data.ArtifactEntity> = emptyList(),
     onDownloadArtifact: (ai.hassan.app.data.ArtifactEntity) -> Unit = {},
+    onInstallApk: (ai.hassan.app.data.ArtifactEntity) -> Unit = {},
     onOpenProjects: () -> Unit = {},
 ) {
     val isUser = message.role == MessageRoles.USER
@@ -900,6 +905,7 @@ private fun MessageBubble(
                     job = linkedJob,
                     artifacts = artifacts.filter { it.jobId == linkedJob.id },
                     onDownloadArtifact = onDownloadArtifact,
+                    onInstallApk = onInstallApk,
                     onOpenProjects = onOpenProjects,
                 )
             }
@@ -912,6 +918,7 @@ private fun ChatTaskCard(
     job: ai.hassan.app.data.CloudJobEntity,
     artifacts: List<ai.hassan.app.data.ArtifactEntity>,
     onDownloadArtifact: (ai.hassan.app.data.ArtifactEntity) -> Unit,
+    onInstallApk: (ai.hassan.app.data.ArtifactEntity) -> Unit = {},
     onOpenProjects: () -> Unit,
 ) {
     val done = job.state.equals("COMPLETED", ignoreCase = true)
@@ -958,22 +965,20 @@ private fun ChatTaskCard(
             if (done && artifacts.isNotEmpty()) {
                 Text("الملفات", fontWeight = FontWeight.Medium)
                 artifacts.take(6).forEach { art ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth().testTag("task_artifact_${art.id}"),
-                    ) {
-                        Text(
-                            art.name,
-                            Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        TextButton(
-                            onClick = { onDownloadArtifact(art) },
-                            modifier = Modifier.testTag("task_download_${art.id}"),
-                        ) { Text("تنزيل") }
-                    }
+                    ArtifactActionRow(
+                        art = art,
+                        onDownload = onDownloadArtifact,
+                        onInstall = onInstallApk,
+                        downloadTestTag = "task_download_${art.id}",
+                        installTestTag = "task_install_${art.id}",
+                    )
+                }
+                if (artifacts.any(::isApkArtifact)) {
+                    Text(
+                        "التثبيت يفتح شاشة النظام — وافق لتحديث التطبيق دون إلغاء التثبيت.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 TextButton(
                     onClick = onOpenProjects,
@@ -1186,6 +1191,7 @@ private fun TasksScreen(
     artifacts: List<ai.hassan.app.data.ArtifactEntity>,
     onSync: () -> Unit,
     onDownloadArtifact: (ai.hassan.app.data.ArtifactEntity) -> Unit,
+    onInstallApk: (ai.hassan.app.data.ArtifactEntity) -> Unit = {},
     onCancelCloudJob: (String) -> Unit,
     onClearFinished: () -> Unit,
     onDeleteLocal: (String) -> Unit,
@@ -1260,6 +1266,7 @@ private fun TasksScreen(
                     artifacts = artifacts.filter { it.jobId == job.id },
                     onCancel = { onCancelCloudJob(job.id) },
                     onDownload = onDownloadArtifact,
+                    onInstall = onInstallApk,
                     onShare = { art -> shareArtifact(context, art) },
                 )
             }
@@ -1285,6 +1292,7 @@ private fun TasksScreen(
                     job = job,
                     artifacts = artifacts.filter { it.jobId == job.id },
                     onDownload = onDownloadArtifact,
+                    onInstall = onInstallApk,
                     onShare = { art -> shareArtifact(context, art) },
                     onDeleteLocal = { onDeleteLocal(job.id) },
                 )
@@ -1327,6 +1335,7 @@ private fun ActiveCloudJobCard(
     artifacts: List<ai.hassan.app.data.ArtifactEntity>,
     onCancel: () -> Unit,
     onDownload: (ai.hassan.app.data.ArtifactEntity) -> Unit,
+    onInstall: (ai.hassan.app.data.ArtifactEntity) -> Unit = {},
     onShare: (ai.hassan.app.data.ArtifactEntity) -> Unit,
 ) {
     val steps = cloudJobPipelineSteps(job.state)
@@ -1363,11 +1372,12 @@ private fun ActiveCloudJobCard(
                 Text("إلغاء المهمة")
             }
             artifacts.forEach { art ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("📎 ${art.name}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { onDownload(art) }) { Text("تنزيل") }
-                    TextButton(onClick = { onShare(art) }) { Text("مشاركة") }
-                }
+                ArtifactActionRow(
+                    art = art,
+                    onDownload = onDownload,
+                    onInstall = onInstall,
+                    onShare = onShare,
+                )
             }
         }
     }
@@ -1378,6 +1388,7 @@ private fun FinishedCloudJobCard(
     job: ai.hassan.app.data.CloudJobEntity,
     artifacts: List<ai.hassan.app.data.ArtifactEntity>,
     onDownload: (ai.hassan.app.data.ArtifactEntity) -> Unit,
+    onInstall: (ai.hassan.app.data.ArtifactEntity) -> Unit = {},
     onShare: (ai.hassan.app.data.ArtifactEntity) -> Unit,
     onDeleteLocal: () -> Unit,
 ) {
@@ -1391,11 +1402,12 @@ private fun FinishedCloudJobCard(
                 Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 4, overflow = TextOverflow.Ellipsis)
             }
             artifacts.forEach { art ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("📎 ${art.name}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { onDownload(art) }) { Text("تنزيل") }
-                    TextButton(onClick = { onShare(art) }) { Text("مشاركة") }
-                }
+                ArtifactActionRow(
+                    art = art,
+                    onDownload = onDownload,
+                    onInstall = onInstall,
+                    onShare = onShare,
+                )
             }
             TextButton(onClick = onDeleteLocal, modifier = Modifier.testTag("delete_local_job_${job.id}")) {
                 Text("حذف من القائمة")
@@ -1431,6 +1443,48 @@ private fun cloudJobPipelineSteps(stateRaw: String): List<PipelineStep> {
             else -> "○"
         }
         PipelineStep(marker, label)
+    }
+}
+
+private fun isApkArtifact(art: ai.hassan.app.data.ArtifactEntity): Boolean =
+    art.name.endsWith(".apk", ignoreCase = true) ||
+        art.mimeType.contains("android.package", ignoreCase = true)
+
+@Composable
+private fun ArtifactActionRow(
+    art: ai.hassan.app.data.ArtifactEntity,
+    onDownload: (ai.hassan.app.data.ArtifactEntity) -> Unit,
+    onInstall: ((ai.hassan.app.data.ArtifactEntity) -> Unit)? = null,
+    onShare: ((ai.hassan.app.data.ArtifactEntity) -> Unit)? = null,
+    downloadTestTag: String? = null,
+    installTestTag: String? = null,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().then(
+            if (downloadTestTag != null) Modifier.testTag("task_artifact_${art.id}") else Modifier,
+        ),
+    ) {
+        Text(
+            "📎 ${art.name}",
+            Modifier.weight(1f),
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        TextButton(
+            onClick = { onDownload(art) },
+            modifier = downloadTestTag?.let { Modifier.testTag(it) } ?: Modifier,
+        ) { Text("تنزيل") }
+        if (onInstall != null && isApkArtifact(art)) {
+            TextButton(
+                onClick = { onInstall(art) },
+                modifier = installTestTag?.let { Modifier.testTag(it) } ?: Modifier,
+            ) { Text("تثبيت") }
+        }
+        if (onShare != null) {
+            TextButton(onClick = { onShare(art) }) { Text("مشاركة") }
+        }
     }
 }
 
