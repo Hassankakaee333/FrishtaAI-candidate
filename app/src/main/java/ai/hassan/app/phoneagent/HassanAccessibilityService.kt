@@ -2,6 +2,7 @@ package ai.hassan.app.phoneagent
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Path
 import android.graphics.Rect
@@ -94,8 +95,11 @@ class HassanAccessibilityService : AccessibilityService() {
         val target = packageName.orEmpty().trim()
         if (target.isBlank()) return PhoneExecutionResult(false, "اسم الحزمة مطلوب")
         val intent = packageManager.getLaunchIntentForPackage(target)
-            ?: return PhoneExecutionResult(false, "لم أجد تطبيقًا بالحزمة $target")
-        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            ?: Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                setPackage(target)
+            }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         return runCatching {
             startActivity(intent)
             PhoneExecutionResult(true, "تم فتح $target")
