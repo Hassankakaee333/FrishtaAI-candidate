@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Hassan AI</string>
+    <string name="phone_agent_accessibility_description">يسمح لـ Hassan Phone Agent بقراءة واجهة الهاتف وتنفيذ أوامر الضغط والكتابة والتمرير والتقاط الشاشة عبر Hassan Cloud بعد موافقتك.</string>
 </resources>

@@ -13,8 +13,8 @@ android {
         applicationId = "ai.hassan.app"
         minSdk = 33
         targetSdk = 36
-        versionCode = 35
-        versionName = "0.5.25"
+        versionCode = 36
+        versionName = "0.5.26"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
@@ -48,7 +48,11 @@ android {
             applicationIdSuffix = ".candidate"
             versionNameSuffix = "-candidate"
             buildConfigField("String", "CHANNEL", "\"candidate\"")
-            buildConfigField("String", "CANDIDATE_UPDATE_MANIFEST_URL", "\"\"")
+            buildConfigField(
+                "String",
+                "CANDIDATE_UPDATE_MANIFEST_URL",
+                "\"https://github.com/Hassankakaee333/FrishtaAI-candidate/releases/download/candidate-latest/candidate-update.json\"",
+            )
             signingConfig = signingConfigs.getByName("candidateCi")
         }
     }

@@ -11,7 +11,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -39,3 +39,32 @@ jobs:
           path: |
             app/build/outputs/apk/candidate/debug/app-candidate-debug.apk
             app-candidate-debug.apk.sha256
+      - name: Prepare phone-only update manifest
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        shell: bash
+        run: |
+          APK="app/build/outputs/apk/candidate/debug/app-candidate-debug.apk"
+          SHA="$(sha256sum "$APK" | awk '{print $1}')"
+          VERSION_CODE="$(awk '/versionCode =/{print $3; exit}' app/build.gradle.kts)"
+          VERSION_NAME="$(awk -F'"' '/versionName =/{print $2; exit}' app/build.gradle.kts)"
+          cat > candidate-update.json <<EOF
+          {"versionCode":${VERSION_CODE},"versionName":"${VERSION_NAME}-candidate","apkUrl":"https://github.com/Hassankakaee333/FrishtaAI-candidate/releases/download/candidate-latest/app-candidate-debug.apk","sha256":"${SHA}","releaseNotes":"Phone-only cloud build with Hassan Phone Agent"}
+          EOF
+      - name: Publish candidate-latest for direct phone update
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          git tag -f candidate-latest "$GITHUB_SHA"
+          git push --force origin refs/tags/candidate-latest
+          if gh release view candidate-latest >/dev/null 2>&1; then
+            gh release edit candidate-latest --title "Latest Candidate" --prerelease --notes "Automatically built and verified from main."
+          else
+            gh release create candidate-latest --title "Latest Candidate" --prerelease --notes "Automatically built and verified from main."
+          fi
+          gh release upload candidate-latest \
+            app/build/outputs/apk/candidate/debug/app-candidate-debug.apk \
+            app-candidate-debug.apk.sha256 \
+            candidate-update.json \
+            --clobber

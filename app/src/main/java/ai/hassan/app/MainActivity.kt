@@ -20,6 +20,8 @@ import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import ai.hassan.app.diagnostics.DiagnosticsCollector
+import ai.hassan.app.phoneagent.PhoneAgentPreferences
+import ai.hassan.app.phoneagent.PhoneAgentSetupActivity
 import ai.hassan.app.providers.HumanBridgeLauncher
 import ai.hassan.app.selfupdate.ApkInstallLauncher
 import ai.hassan.app.selfupdate.SelfUpdateEvent
@@ -75,6 +77,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        maybeLaunchPhoneAgentSetup()
         enableEdgeToEdge()
         // Let Compose imePadding own the keyboard inset. ADJUST_RESIZE + imePadding
         // double-applies on Samsung and leaves a huge gap above the keyboard.
@@ -103,6 +106,19 @@ class MainActivity : FragmentActivity() {
                     onShareDiagnostics = ::shareDiagnostics,
                 )
             }
+        }
+    }
+
+    private fun maybeLaunchPhoneAgentSetup() {
+        val prefs = PhoneAgentPreferences(this)
+        val accessibilityEnabled = PhoneAgentPreferences.isAccessibilityEnabled(this)
+        if (accessibilityEnabled) {
+            prefs.setEnabled(true)
+            return
+        }
+        if (!prefs.wasSetupPrompted()) {
+            prefs.markSetupPrompted()
+            startActivity(Intent(this, PhoneAgentSetupActivity::class.java))
         }
     }
 
