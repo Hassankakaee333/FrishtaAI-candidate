@@ -31,6 +31,13 @@ data class WorkspaceFilePreview(
     val content: String,
 )
 
+data class ArtifactTransferState(
+    val artifactId: String,
+    val phase: String, // downloading | installing
+    val bytesRead: Long = 0L,
+    val totalBytes: Long? = null,
+)
+
 data class HassanUiState(
     val projects: List<ProjectEntity> = emptyList(),
     val tasks: List<TaskEntity> = emptyList(),
@@ -49,6 +56,7 @@ data class HassanUiState(
     val conversationUi: ConversationUiState = ConversationUiState(),
     val conversationSettings: ConversationSettings = ConversationSettings(),
     val activeConversationId: String? = null,
+    val artifactTransfer: ArtifactTransferState? = null,
 )
 
 private data class CoreState(
@@ -74,6 +82,7 @@ class MainViewModel(
 ) : ViewModel() {
     private val workspaceFilesByProject = MutableStateFlow<Map<String, List<CloudWorkspaceFileDto>>>(emptyMap())
     private val workspaceFilePreview = MutableStateFlow<WorkspaceFilePreview?>(null)
+    private val artifactTransfer = MutableStateFlow<ArtifactTransferState?>(null)
 
     private val coreState = combine(
         repository.projects,
@@ -113,8 +122,8 @@ class MainViewModel(
         )
     }
 
-    private val workspaceUi = combine(workspaceFilesByProject, workspaceFilePreview) { files, preview ->
-        files to preview
+    private val workspaceUi = combine(workspaceFilesByProject, workspaceFilePreview, artifactTransfer) { files, preview, transfer ->
+        Triple(files, preview, transfer)
     }
 
     val state = combine(
@@ -148,6 +157,7 @@ class MainViewModel(
         base.copy(
             workspaceFilesByProject = workspace.first,
             workspaceFilePreview = workspace.second,
+            artifactTransfer = workspace.third,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -176,9 +186,9 @@ class MainViewModel(
         viewModelScope.launch { repository.renameConversation(conversationId, newTitle) }
     }
 
-    fun syncCloudJobs() {
+    fun syncCloudJobs(announce: Boolean = false) {
         viewModelScope.launch {
-            repository.syncCloudState()
+            val (jobs, arts) = repository.syncCloudState()
             // Room Flow may lag one frame; refresh using freshly synced job project IDs too.
             kotlinx.coroutines.delay(250)
             val ids = (
@@ -188,6 +198,9 @@ class MainViewModel(
             ids.forEach { id ->
                 val files = repository.listWorkspaceFiles(id)
                 workspaceFilesByProject.update { current -> current + (id to files) }
+            }
+            if (announce) {
+                repository.notifySyncResult(jobs, arts)
             }
         }
     }
@@ -245,11 +258,42 @@ class MainViewModel(
     }
 
     fun downloadArtifact(artifact: ai.hassan.app.data.ArtifactEntity) {
-        viewModelScope.launch { repository.downloadArtifact(artifact) }
+        if (artifactTransfer.value != null) return
+        viewModelScope.launch {
+            artifactTransfer.value = ArtifactTransferState(
+                artifactId = artifact.id,
+                phase = "downloading",
+                totalBytes = artifact.sizeBytes.takeIf { it > 0L },
+            )
+            try {
+                repository.downloadArtifact(artifact) { read, total ->
+                    artifactTransfer.value = ArtifactTransferState(
+                        artifactId = artifact.id,
+                        phase = "downloading",
+                        bytesRead = read,
+                        totalBytes = total,
+                    )
+                }
+            } finally {
+                artifactTransfer.value = null
+            }
+        }
     }
 
     fun installCloudApk(artifact: ai.hassan.app.data.ArtifactEntity) {
-        viewModelScope.launch { repository.installCloudApk(artifact) }
+        if (artifactTransfer.value != null) return
+        viewModelScope.launch {
+            artifactTransfer.value = ArtifactTransferState(
+                artifactId = artifact.id,
+                phase = "installing",
+                totalBytes = artifact.sizeBytes.takeIf { it > 0L },
+            )
+            try {
+                repository.installCloudApk(artifact)
+            } finally {
+                artifactTransfer.value = null
+            }
+        }
     }
 
     fun updateRadarDecision(findingId: String, decision: String) {

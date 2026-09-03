@@ -80,6 +80,7 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -87,6 +88,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
+import ai.hassan.app.data.formatArtifactBytes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -108,6 +110,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -162,6 +166,13 @@ private enum class HassanScreen(val title: String, val icon: ImageVector) {
 }
 
 private data class LeadOption(val id: String, val label: String)
+private data class SpeechLanguageOption(val tag: String, val label: String)
+
+private val speechLanguageOptions = listOf(
+    SpeechLanguageOption("ar-IQ", "العربية (العراق)"),
+    SpeechLanguageOption("ckb-IQ", "الكردية السورانية"),
+    SpeechLanguageOption("", "لغة الجهاز"),
+)
 
 private val leadOptions = listOf(
     LeadOption("auto", "Frishta Auto"),
@@ -338,7 +349,8 @@ fun HassanApp(
                             tasks = state.tasks,
                             cloudJobs = state.cloudJobs,
                             artifacts = state.artifacts,
-                            onSync = viewModel::syncCloudJobs,
+                            transfer = state.artifactTransfer,
+                            onSync = { viewModel.syncCloudJobs(announce = true) },
                             onDownloadArtifact = viewModel::downloadArtifact,
                             onInstallApk = viewModel::installCloudApk,
                             onCancelCloudJob = viewModel::cancelCloudJob,
@@ -544,9 +556,13 @@ private fun ChatHomeScreen(
     }
 
     fun launchSpeechRecognizer() {
+        val preferredLanguage = state.conversationSettings.speechLanguage.trim()
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar-SA")
+            if (preferredLanguage.isNotBlank()) {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, preferredLanguage)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, preferredLanguage)
+            }
             putExtra(RecognizerIntent.EXTRA_PROMPT, "تحدث مع $selectedProviderName")
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }
@@ -646,6 +662,7 @@ private fun ChatHomeScreen(
                     message = message,
                     cloudJobs = state.cloudJobs,
                     artifacts = state.artifacts,
+                    transfer = state.artifactTransfer,
                     onDownloadArtifact = onDownloadArtifact,
                     onInstallApk = onInstallApk,
                     onOpenProjects = onOpenProjects,
@@ -842,6 +859,7 @@ private fun MessageBubble(
     message: MessageEntity,
     cloudJobs: List<ai.hassan.app.data.CloudJobEntity> = emptyList(),
     artifacts: List<ai.hassan.app.data.ArtifactEntity> = emptyList(),
+    transfer: ArtifactTransferState? = null,
     onDownloadArtifact: (ai.hassan.app.data.ArtifactEntity) -> Unit = {},
     onInstallApk: (ai.hassan.app.data.ArtifactEntity) -> Unit = {},
     onOpenProjects: () -> Unit = {},
@@ -904,6 +922,7 @@ private fun MessageBubble(
                 ChatTaskCard(
                     job = linkedJob,
                     artifacts = artifacts.filter { it.jobId == linkedJob.id },
+                    transfer = transfer,
                     onDownloadArtifact = onDownloadArtifact,
                     onInstallApk = onInstallApk,
                     onOpenProjects = onOpenProjects,
@@ -917,6 +936,7 @@ private fun MessageBubble(
 private fun ChatTaskCard(
     job: ai.hassan.app.data.CloudJobEntity,
     artifacts: List<ai.hassan.app.data.ArtifactEntity>,
+    transfer: ArtifactTransferState? = null,
     onDownloadArtifact: (ai.hassan.app.data.ArtifactEntity) -> Unit,
     onInstallApk: (ai.hassan.app.data.ArtifactEntity) -> Unit = {},
     onOpenProjects: () -> Unit,
@@ -967,6 +987,7 @@ private fun ChatTaskCard(
                 artifacts.take(6).forEach { art ->
                     ArtifactActionRow(
                         art = art,
+                        transfer = transfer,
                         onDownload = onDownloadArtifact,
                         onInstall = onInstallApk,
                         downloadTestTag = "task_download_${art.id}",
@@ -1189,6 +1210,7 @@ private fun TasksScreen(
     tasks: List<TaskEntity>,
     cloudJobs: List<ai.hassan.app.data.CloudJobEntity>,
     artifacts: List<ai.hassan.app.data.ArtifactEntity>,
+    transfer: ArtifactTransferState? = null,
     onSync: () -> Unit,
     onDownloadArtifact: (ai.hassan.app.data.ArtifactEntity) -> Unit,
     onInstallApk: (ai.hassan.app.data.ArtifactEntity) -> Unit = {},
@@ -1269,6 +1291,7 @@ private fun TasksScreen(
                 ActiveCloudJobCard(
                     job = job,
                     artifacts = artifacts.filter { it.jobId == job.id },
+                    transfer = transfer,
                     onCancel = { onCancelCloudJob(job.id) },
                     onDownload = onDownloadArtifact,
                     onInstall = onInstallApk,
@@ -1296,6 +1319,7 @@ private fun TasksScreen(
                 FinishedCloudJobCard(
                     job = job,
                     artifacts = artifacts.filter { it.jobId == job.id },
+                    transfer = transfer,
                     onDownload = onDownloadArtifact,
                     onInstall = onInstallApk,
                     onShare = { art -> shareArtifact(context, art) },
@@ -1338,6 +1362,7 @@ private fun TasksScreen(
 private fun ActiveCloudJobCard(
     job: ai.hassan.app.data.CloudJobEntity,
     artifacts: List<ai.hassan.app.data.ArtifactEntity>,
+    transfer: ArtifactTransferState? = null,
     onCancel: () -> Unit,
     onDownload: (ai.hassan.app.data.ArtifactEntity) -> Unit,
     onInstall: (ai.hassan.app.data.ArtifactEntity) -> Unit = {},
@@ -1379,6 +1404,7 @@ private fun ActiveCloudJobCard(
             artifacts.forEach { art ->
                 ArtifactActionRow(
                     art = art,
+                    transfer = transfer,
                     onDownload = onDownload,
                     onInstall = onInstall,
                     onShare = onShare,
@@ -1392,23 +1418,33 @@ private fun ActiveCloudJobCard(
 private fun FinishedCloudJobCard(
     job: ai.hassan.app.data.CloudJobEntity,
     artifacts: List<ai.hassan.app.data.ArtifactEntity>,
+    transfer: ArtifactTransferState? = null,
     onDownload: (ai.hassan.app.data.ArtifactEntity) -> Unit,
     onInstall: (ai.hassan.app.data.ArtifactEntity) -> Unit = {},
     onShare: (ai.hassan.app.data.ArtifactEntity) -> Unit,
     onDeleteLocal: () -> Unit,
 ) {
+    val failed = job.state.equals("FAILED", ignoreCase = true)
     ElevatedCard(modifier = Modifier.testTag("finished_cloud_job_${job.id}")) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(job.goal, Modifier.weight(1f), fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 StatusChip(job.state)
             }
-            job.resultSummary?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 4, overflow = TextOverflow.Ellipsis)
+            job.resultSummary?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 6, overflow = TextOverflow.Ellipsis)
+            }
+            if (failed && job.log.isNotBlank()) {
+                Text(
+                    "سبب/سجل:\n" + job.log.lines().takeLast(8).joinToString("\n"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
             artifacts.forEach { art ->
                 ArtifactActionRow(
                     art = art,
+                    transfer = transfer,
                     onDownload = onDownload,
                     onInstall = onInstall,
                     onShare = onShare,
@@ -1458,37 +1494,98 @@ private fun isApkArtifact(art: ai.hassan.app.data.ArtifactEntity): Boolean =
 @Composable
 private fun ArtifactActionRow(
     art: ai.hassan.app.data.ArtifactEntity,
+    transfer: ArtifactTransferState? = null,
     onDownload: (ai.hassan.app.data.ArtifactEntity) -> Unit,
     onInstall: ((ai.hassan.app.data.ArtifactEntity) -> Unit)? = null,
     onShare: ((ai.hassan.app.data.ArtifactEntity) -> Unit)? = null,
     downloadTestTag: String? = null,
     installTestTag: String? = null,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth().then(
-            if (downloadTestTag != null) Modifier.testTag("task_artifact_${art.id}") else Modifier,
-        ),
-    ) {
-        Text(
-            "📎 ${art.name}",
-            Modifier.weight(1f),
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        TextButton(
-            onClick = { onDownload(art) },
-            modifier = downloadTestTag?.let { Modifier.testTag(it) } ?: Modifier,
-        ) { Text("تنزيل") }
-        if (onInstall != null && isApkArtifact(art)) {
-            TextButton(
-                onClick = { onInstall(art) },
-                modifier = installTestTag?.let { Modifier.testTag(it) } ?: Modifier,
-            ) { Text("تثبيت") }
+    val activeTransfer = transfer
+    val localReady = !art.localPath.isNullOrBlank() &&
+        java.io.File(art.localPath.orEmpty()).let { it.exists() && it.length() > 0L }
+    val busyHere = activeTransfer?.artifactId == art.id
+    val busyOther = activeTransfer != null && !busyHere
+    val totalBytes = activeTransfer?.totalBytes
+    val progressFraction =
+        if (busyHere && activeTransfer != null && activeTransfer.phase == "downloading" && totalBytes != null && totalBytes > 0L) {
+            (activeTransfer.bytesRead.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+        } else {
+            null
         }
-        if (onShare != null) {
-            TextButton(onClick = { onShare(art) }) { Text("مشاركة") }
+    Column(
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().then(
+                if (downloadTestTag != null) Modifier.testTag("task_artifact_${art.id}") else Modifier,
+            ),
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                Column {
+                Text(
+                    art.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val status = buildString {
+                    if (art.sizeBytes > 0L) append(formatArtifactBytes(art.sizeBytes))
+                    when {
+                        busyHere && activeTransfer?.phase == "downloading" -> {
+                            if (isNotEmpty()) append(" · ")
+                            append("تنزيل ${formatArtifactBytes(activeTransfer.bytesRead)}")
+                            activeTransfer.totalBytes?.takeIf { it > 0 }?.let {
+                                append(" / ${formatArtifactBytes(it)}")
+                            }
+                        }
+                        busyHere && activeTransfer?.phase == "installing" -> {
+                            if (isNotEmpty()) append(" · ")
+                            append("تجهيز التثبيت…")
+                        }
+                        localReady -> {
+                            if (isNotEmpty()) append(" · ")
+                            append("محلي جاهز")
+                        }
+                    }
+                }
+                if (status.isNotBlank()) {
+                    Text(
+                        status,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                }
+            }
+            TextButton(
+                onClick = { onDownload(art) },
+                enabled = !busyHere && !busyOther,
+                modifier = downloadTestTag?.let { Modifier.testTag(it) } ?: Modifier,
+            ) { Text(if (localReady) "أعِد التنزيل" else "تنزيل") }
+            if (onInstall != null && isApkArtifact(art)) {
+                FilledTonalButton(
+                    onClick = { onInstall(art) },
+                    enabled = !busyHere && !busyOther,
+                    modifier = installTestTag?.let { Modifier.testTag(it) } ?: Modifier,
+                ) { Text(if (localReady) "تثبيت" else "تنزيل وثبّت") }
+            }
+            if (onShare != null) {
+                TextButton(
+                    onClick = { onShare(art) },
+                    enabled = localReady && !busyHere && !busyOther,
+                ) { Text("مشاركة") }
+            }
+        }
+        if (progressFraction != null) {
+            LinearProgressIndicator(
+                progress = progressFraction,
+                modifier = Modifier.fillMaxWidth().testTag("artifact_download_progress"),
+            )
+        } else if (busyHere) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -1687,8 +1784,47 @@ private fun SettingsScreen(
     onCheckUpdate: () -> Unit,
 ) {
     var cloudUrl by remember(conversationSettings.cloudBaseUrl) { mutableStateOf(conversationSettings.cloudBaseUrl) }
-    var accessToken by remember(conversationSettings.accessToken) { mutableStateOf(conversationSettings.accessToken) }
+    var accessTokenDraft by remember { mutableStateOf("") }
+    var showToken by remember { mutableStateOf(false) }
+    var showAdvancedSettings by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp).testTag("settings_scroll"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        ElevatedCard(modifier = Modifier.testTag("basic_settings_card")) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("الإعدادات الأساسية", fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ProviderStatusDot(conversationUi)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (conversationUi.providerConfigured) "المحادثة متصلة" else "المحادثة غير مُعدّة")
+                }
+                Text("مزوّد المحادثة", style = MaterialTheme.typography.labelMedium)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(leadOptions, key = { "basic_chat_${it.id}" }) { option ->
+                        FilterChip(
+                            selected = conversationSettings.chatProvider == option.id,
+                            onClick = { onUpdateConversationSettings(conversationSettings.copy(chatProvider = option.id)) },
+                            label = { Text(option.label) },
+                        )
+                    }
+                }
+                Text("لغة الإدخال الصوتي", style = MaterialTheme.typography.labelMedium)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(speechLanguageOptions, key = { it.tag.ifBlank { "system" } }) { option ->
+                        FilterChip(
+                            selected = conversationSettings.speechLanguage == option.tag,
+                            onClick = { onUpdateConversationSettings(conversationSettings.copy(speechLanguage = option.tag)) },
+                            label = { Text(option.label) },
+                        )
+                    }
+                }
+                OutlinedButton(
+                    onClick = { showAdvancedSettings = !showAdvancedSettings },
+                    modifier = Modifier.fillMaxWidth().testTag("toggle_advanced_settings"),
+                ) {
+                    Text(if (showAdvancedSettings) "إخفاء الإعدادات المتقدمة" else "إظهار الإعدادات المتقدمة")
+                }
+            }
+        }
+        if (showAdvancedSettings) {
         ElevatedCard(modifier = Modifier.testTag("cloud_conversation_card")) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Hassan Cloud — المحادثة", fontWeight = FontWeight.Bold)
@@ -1705,12 +1841,25 @@ private fun SettingsScreen(
                     placeholder = { Text("https://api.example.com") },
                     singleLine = true,
                 )
+                Text(
+                    if (conversationSettings.accessToken.isNotBlank()) "رمز الوصول محفوظ بأمان على الجهاز."
+                    else "لا يوجد رمز وصول محفوظ.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 OutlinedTextField(
-                    value = accessToken,
-                    onValueChange = { accessToken = it },
+                    value = accessTokenDraft,
+                    onValueChange = { accessTokenDraft = it },
                     modifier = Modifier.fillMaxWidth().testTag("cloud_token"),
-                    label = { Text("رمز الوصول") },
+                    label = { Text("رمز وصول جديد") },
+                    placeholder = { Text("اتركه فارغًا للإبقاء على الرمز المحفوظ") },
                     singleLine = true,
+                    visualTransformation = if (showToken) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        TextButton(onClick = { showToken = !showToken }) {
+                            Text(if (showToken) "إخفاء" else "إظهار")
+                        }
+                    },
                 )
                 Text("مزوّد المحادثة", style = MaterialTheme.typography.labelMedium)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1727,12 +1876,15 @@ private fun SettingsScreen(
                 }
                 Button(
                     onClick = {
+                        val nextToken = accessTokenDraft.trim().ifBlank { conversationSettings.accessToken }
                         onUpdateConversationSettings(
                             conversationSettings.copy(
                                 cloudBaseUrl = cloudUrl.trim(),
-                                accessToken = accessToken.trim(),
+                                accessToken = nextToken,
                             ),
                         )
+                        accessTokenDraft = ""
+                        showToken = false
                     },
                     modifier = Modifier.fillMaxWidth().testTag("save_cloud_settings"),
                 ) {
@@ -1745,6 +1897,7 @@ private fun SettingsScreen(
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
+        }
         }
         ElevatedCard(modifier = Modifier.testTag("self_update_card")) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1777,25 +1930,7 @@ private fun SettingsScreen(
                 )
             }
         }
-        ElevatedCard(modifier = Modifier.testTag("conversation_provider_card")) {
-            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("محادثة Hassan", fontWeight = FontWeight.Bold)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    ProviderStatusDot(conversationUi)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        if (conversationUi.providerConfigured) "مزود المحادثة جاهز"
-                        else conversationUi.statusMessage,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                Text(
-                    "التطبيق مستقل عن أي كمبيوتر. المحادثة العادية تحتاج مزودًا محادثةً حقيقيًا — غير مُعدّ حاليًا.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
+        if (showAdvancedSettings) {
         ElevatedCard(modifier = Modifier.testTag("lead_brain_selector")) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("مورد التنفيذ (للمهام فقط)", fontWeight = FontWeight.Bold)
@@ -1876,6 +2011,14 @@ private fun SettingsScreen(
                 Text("• Radar يكتشف ويحفظ فقط؛ لا يربط Provider تلقائيًا")
             }
         }
+        }
+        ElevatedCard(modifier = Modifier.testTag("app_version_card")) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("نسخة التطبيق", fontWeight = FontWeight.Bold)
+                Text("${BuildConfig.VERSION_NAME} (code ${BuildConfig.VERSION_CODE})")
+                Text(BuildConfig.APPLICATION_ID, style = MaterialTheme.typography.labelSmall)
+            }
+        }
     }
 }
 
@@ -1894,16 +2037,19 @@ private fun StatusChip(status: String) {
     )
 }
 
-private fun stateLabel(state: String): String = when (state) {
+private fun stateLabel(state: String): String = when (state.uppercase()) {
     "DISCUSSING" -> "يناقش"
     "PLAN_READY", "AWAITING_USER_APPROVAL" -> "الخطة جاهزة"
     "QUEUED" -> "في الطابور"
-    "EXECUTING", TaskStatuses.RUNNING -> "ينفذ"
+    "RUNNING", "EXECUTING", TaskStatuses.RUNNING -> "ينفذ"
+    "CODING" -> "يعدّل الكود"
+    "TESTING" -> "يختبر"
     "NEEDS_INPUT" -> "يحتاج جوابك"
     "VERIFYING" -> "يتحقق"
     "CANDIDATE_READY" -> "Candidate جاهز"
     "COMPLETED", DecisionStatuses.APPROVED, TaskStatuses.APPROVED, RadarStatuses.VERIFIED -> "نجح"
     "FAILED", RadarStatuses.FAILED -> "فشل"
+    "CANCELLED", "CANCELED" -> "أُلغي"
     "REJECTED", DecisionStatuses.REJECTED, TaskStatuses.REJECTED -> "مرفوض"
     TaskStatuses.DRAFT -> "مسودة"
     "FREE" -> "FREE"

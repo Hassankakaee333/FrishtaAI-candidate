@@ -183,10 +183,16 @@ class HassanRepository(
         return count
     }
 
+    suspend fun notifySyncResult(jobCount: Int, artifactCount: Int) {
+        selfUpdateManager.notifyUser("تمت المزامنة: $jobCount مهمة، $artifactCount ملف")
+    }
+
     suspend fun syncCloudState(): Pair<Int, Int> {
         val orchestrator = cloudTaskOrchestrator
         return if (orchestrator is ai.hassan.app.cloud.CloudJobOrchestratorImpl) {
-            orchestrator.syncAll()
+            val result = orchestrator.syncAll()
+            processSelfImproveJobUpdates()
+            result
         } else {
             0 to 0
         }
@@ -225,22 +231,31 @@ class HassanRepository(
         database.artifactDao().deleteOrphans()
     }
 
-    suspend fun downloadArtifact(artifact: ArtifactEntity): Result<File> {
+    suspend fun downloadArtifact(
+        artifact: ArtifactEntity,
+        onProgress: ((bytesRead: Long, totalBytes: Long?) -> Unit)? = null,
+    ): Result<File> {
         val settings = conversationSettingsStore.read()
         if (!conversationSettingsStore.isCloudConfigured()) {
             return Result.failure(IllegalStateException("Hassan Cloud غير مُعد"))
         }
-        val cloudId = artifact.id
+        selfUpdateManager.notifyUser("جارٍ تنزيل ${artifact.name}…")
         val dest = File(context.cacheDir, "artifacts/${artifact.name}")
         dest.parentFile?.mkdirs()
+        val knownTotal = artifact.sizeBytes.takeIf { it > 0L }
         val result = hassanCloudApi.downloadArtifact(
             settings.cloudBaseUrl,
             settings.accessToken,
-            cloudId,
+            artifact.id,
             dest,
-        )
+        ) { read, total ->
+            onProgress?.invoke(read, total ?: knownTotal)
+        }
         result.onSuccess { file ->
-            database.artifactDao().upsert(artifact.copy(localPath = file.absolutePath))
+            database.artifactDao().upsert(
+                artifact.copy(localPath = file.absolutePath, sizeBytes = file.length().coerceAtLeast(artifact.sizeBytes)),
+            )
+            selfUpdateManager.notifyUser("اكتمل تنزيل ${artifact.name} (${formatArtifactBytes(file.length())})")
         }
         result.exceptionOrNull()?.let { err ->
             selfUpdateManager.notifyUser("تعذر تنزيل ${artifact.name}: ${err.message ?: "خطأ شبكة"}")
@@ -251,6 +266,7 @@ class HassanRepository(
     suspend fun installCloudApk(artifact: ArtifactEntity): Result<Unit> {
         val local = artifact.localPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 0L }
         val file = local ?: downloadArtifact(artifact).getOrElse { return Result.failure(it) }
+        selfUpdateManager.notifyUser("جارٍ تجهيز التثبيت…")
         val results = selfUpdateManager.installUpdateFromFile(file.absolutePath, backupFirst = true)
         val error = results.filterIsInstance<SelfUpdateResult.Error>().firstOrNull()
         if (error != null) {
@@ -1311,4 +1327,10 @@ class HassanRepository(
         const val AUTO_PROVIDER_ID = "auto"
         val LEAD_BRAIN_IDS = setOf(AUTO_PROVIDER_ID, "chatgpt", "gemini", "deepseek")
     }
+}
+
+internal fun formatArtifactBytes(bytes: Long): String = when {
+    bytes < 1024 -> "$bytes B"
+    bytes < 1024 * 1024 -> "%.1f KB".format(bytes / 1024.0)
+    else -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
 }

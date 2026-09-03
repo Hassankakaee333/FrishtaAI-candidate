@@ -403,6 +403,7 @@ class HassanCloudApi(
         token: String,
         artifactId: String,
         dest: File,
+        onProgress: ((bytesRead: Long, totalBytes: Long?) -> Unit)? = null,
     ): Result<File> = withContext(Dispatchers.IO) {
         val downloadClient = downloadHttpClient.newBuilder()
             .connectTimeout(45, TimeUnit.SECONDS)
@@ -424,9 +425,25 @@ class HassanCloudApi(
                     check(response.isSuccessful) { "HTTP ${response.code}" }
                     dest.parentFile?.mkdirs()
                     val tmp = File(dest.parentFile, "${dest.name}.part")
+                    val total = response.body.contentLength().takeIf { it > 0L }
+                    var read = 0L
+                    var lastEmit = 0L
+                    val buffer = ByteArray(64 * 1024)
                     response.body.byteStream().use { input ->
-                        tmp.outputStream().use { output -> input.copyTo(output, 64 * 1024) }
+                        tmp.outputStream().use { output ->
+                            while (true) {
+                                val n = input.read(buffer)
+                                if (n < 0) break
+                                output.write(buffer, 0, n)
+                                read += n
+                                if (onProgress != null && (read - lastEmit >= 512 * 1024 || read == total)) {
+                                    lastEmit = read
+                                    onProgress(read, total)
+                                }
+                            }
+                        }
                     }
+                    onProgress?.invoke(read, total ?: read)
                     check(tmp.length() > 0L) { "ملف فارغ بعد التنزيل" }
                     if (dest.exists()) dest.delete()
                     check(tmp.renameTo(dest) || (dest.delete() && tmp.renameTo(dest))) {

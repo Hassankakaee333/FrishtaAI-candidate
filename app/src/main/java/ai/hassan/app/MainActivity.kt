@@ -37,6 +37,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private var pendingBiometricDecisionId: String? = null
+    private var pendingInstallApkPath: String? = null
 
     private val bridgeLauncher by lazy { HumanBridgeLauncher(this) }
 
@@ -63,6 +64,13 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.syncCloudJobs()
+        val pending = pendingInstallApkPath
+        if (pending != null &&
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls())
+        ) {
+            pendingInstallApkPath = null
+            launchApkInstall(pending)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -102,9 +110,10 @@ class MainActivity : FragmentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !packageManager.canRequestPackageInstalls()
         ) {
+            pendingInstallApkPath = apkPath
             Toast.makeText(
                 this,
-                "اسمح بتثبيت التطبيقات من Frishta ثم اضغط تثبيت مرة أخرى",
+                "اسمح بتثبيت التطبيقات من Frishta ثم ارجع للتطبيق — سأفتح التثبيت تلقائيًا",
                 Toast.LENGTH_LONG,
             ).show()
             startActivity(
