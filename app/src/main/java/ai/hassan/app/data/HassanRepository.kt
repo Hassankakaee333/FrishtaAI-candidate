@@ -115,7 +115,7 @@ class HassanRepository(
             },
         )
         if (conversationSettingsStore.isCloudConfigured()) {
-            syncCloudState()
+            syncCloudJobs()
         }
     }
 
@@ -945,33 +945,16 @@ class HassanRepository(
 
         when (job.state.uppercase()) {
             "COMPLETED" -> {
-                selfImproveStore.markAnnounced(pendingJobId, job.state)
                 val apk = database.artifactDao().listForJob(pendingJobId)
                     .firstOrNull {
                         it.name.endsWith(".apk", ignoreCase = true) ||
                             it.mimeType.contains("android.package", ignoreCase = true)
                     }
                 if (apk == null) {
-                    addHassanMessage(
-                        conversationId,
-                        buildString {
-                            appendLine("المهمة اكتملت لكن لم يُعثر على APK في المخرجات.")
-                            appendLine(job.resultSummary.orEmpty().ifBlank { "لا يوجد ملخص." })
-                            appendLine("النسخة الاحتياطية ما زالت متاحة: «ارجع للنسخة السابقة».")
-                        }.trim(),
-                    )
-                    database.executionPlanDao().latestForConversation(conversationId)?.let {
-                        if (it.capability == SelfImproveJobStore.CAPABILITY) {
-                            database.executionPlanDao().update(it.copy(status = ExecutionState.FAILED.name))
-                        }
-                    }
-                    updateConversationState(
-                        database.conversationDao().getById(conversationId) ?: return,
-                        ExecutionState.FAILED,
-                    )
-                    selfImproveStore.clearPending()
+                    // Artifacts may lag one sync behind the job state — retry next sync.
                     return
                 }
+                selfImproveStore.markAnnounced(pendingJobId, job.state)
                 addHassanMessage(
                     conversationId,
                     "اكتمل البناء السحابي. جارٍ تنزيل ${apk.name} مع إعادة المحاولة عند انقطاع الشبكة…",

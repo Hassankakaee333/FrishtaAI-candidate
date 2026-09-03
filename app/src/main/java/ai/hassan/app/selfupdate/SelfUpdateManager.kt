@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import ai.hassan.app.BuildConfig
 import java.io.File
 import java.security.MessageDigest
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -26,7 +27,11 @@ class SelfUpdateManager(
     private val backupMeta = File(backupDir, "hassan-previous.json")
     private val stagedApk = File(stagingDir, "hassan-update.apk")
 
-    private val _events = MutableSharedFlow<SelfUpdateEvent>(extraBufferCapacity = 8)
+    private val _events = MutableSharedFlow<SelfUpdateEvent>(
+        replay = 1,
+        extraBufferCapacity = 8,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
     val events: SharedFlow<SelfUpdateEvent> = _events.asSharedFlow()
 
     suspend fun notifyUser(message: String) {

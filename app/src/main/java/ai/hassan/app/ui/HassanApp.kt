@@ -1217,6 +1217,11 @@ private fun TasksScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("كيف تعمل المهام السحابية؟", fontWeight = FontWeight.Bold)
                     Text(
+                        "التحديثات تُثبَّت بموافقتك من زر تثبيت.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
                         "1) من المحادثة: «حسّن التطبيق: …» ثم «ابدأ»\n" +
                             "2) السحابة تنشئ Job على GitHub Actions\n" +
                             "3) تُبنى نسخة APK (Candidate)\n" +

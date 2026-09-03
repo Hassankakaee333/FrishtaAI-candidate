@@ -115,7 +115,9 @@ class MainActivity : FragmentActivity() {
             return
         }
         runCatching {
-            startActivity(ApkInstallLauncher.createInstallIntent(this, apkPath))
+            val intent = ApkInstallLauncher.createInstallIntent(this, apkPath)
+            startActivity(intent)
+            Toast.makeText(this, "افتح شاشة التثبيت ووافق على التحديث", Toast.LENGTH_SHORT).show()
         }.onFailure {
             Toast.makeText(this, "تعذر فتح مثبت APK: ${it.message}", Toast.LENGTH_LONG).show()
         }
