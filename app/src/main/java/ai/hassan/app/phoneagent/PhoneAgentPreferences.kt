@@ -8,9 +8,19 @@ class PhoneAgentPreferences(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun isEnabled(): Boolean = prefs.getBoolean(KEY_ENABLED, false)
+    fun isUserStopped(): Boolean = prefs.getBoolean(KEY_USER_STOPPED, false)
 
     fun setEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
+        prefs.edit()
+            .putBoolean(KEY_ENABLED, enabled)
+            .putBoolean(KEY_USER_STOPPED, !enabled)
+            .apply()
+    }
+
+    fun enableAfterAccessibilityGrant() {
+        if (!isUserStopped()) {
+            prefs.edit().putBoolean(KEY_ENABLED, true).apply()
+        }
     }
 
     fun wasSetupPrompted(): Boolean = prefs.getBoolean(KEY_SETUP_PROMPTED, false)
@@ -36,6 +46,7 @@ class PhoneAgentPreferences(context: Context) {
     companion object {
         private const val PREFS = "hassan_phone_agent"
         private const val KEY_ENABLED = "enabled"
+        private const val KEY_USER_STOPPED = "user_stopped"
         private const val KEY_SETUP_PROMPTED = "setup_prompted"
         private const val KEY_PROCESSED_PATHS = "processed_paths"
         private const val MAX_PROCESSED = 500

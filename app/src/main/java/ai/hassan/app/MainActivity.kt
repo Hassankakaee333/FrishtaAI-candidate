@@ -79,8 +79,6 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         maybeLaunchPhoneAgentSetup()
         enableEdgeToEdge()
-        // Let Compose imePadding own the keyboard inset. ADJUST_RESIZE + imePadding
-        // double-applies on Samsung and leaves a huge gap above the keyboard.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
         handleShareIntent(intent)
@@ -113,7 +111,10 @@ class MainActivity : FragmentActivity() {
         val prefs = PhoneAgentPreferences(this)
         val accessibilityEnabled = PhoneAgentPreferences.isAccessibilityEnabled(this)
         if (accessibilityEnabled) {
-            prefs.setEnabled(true)
+            if (!prefs.wasSetupPrompted()) {
+                prefs.markSetupPrompted()
+                prefs.enableAfterAccessibilityGrant()
+            }
             return
         }
         if (!prefs.wasSetupPrompted()) {

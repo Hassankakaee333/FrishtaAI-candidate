@@ -27,8 +27,9 @@ class PhoneAgentSetupActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        val accessibility = PhoneAgentPreferences.isAccessibilityEnabled(this)
-        if (accessibility) prefs.setEnabled(true)
+        if (PhoneAgentPreferences.isAccessibilityEnabled(this)) {
+            prefs.enableAfterAccessibilityGrant()
+        }
         refreshStatus()
     }
 
@@ -41,10 +42,14 @@ class PhoneAgentSetupActivity : Activity() {
             setPadding(0, dp(10), 0, dp(16))
         }
         enableButton = Button(this).apply {
-            text = "فتح إعدادات إمكانية الوصول"
             setOnClickListener {
-                prefs.markSetupPrompted()
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                if (PhoneAgentPreferences.isAccessibilityEnabled(this@PhoneAgentSetupActivity)) {
+                    prefs.setEnabled(true)
+                    refreshStatus()
+                } else {
+                    prefs.markSetupPrompted()
+                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                }
             }
         }
         val stopButton = Button(this).apply {
@@ -75,7 +80,7 @@ class PhoneAgentSetupActivity : Activity() {
                 setPadding(0, dp(14), 0, dp(8))
             })
             addView(TextView(this@PhoneAgentSetupActivity).apply {
-                text = "الحماية: كلمات المرور لا تُقرأ ولا تُكتب، والأوامر المصنفة حساسة تتوقف حتى موافقة محلية. يمكنك إيقاف الوكيل من هذه الشاشة في أي وقت."
+                text = "الحماية: كلمات المرور لا تُقرأ ولا تُكتب، والأوامر المصنفة حساسة تتوقف حتى موافقة محلية. زر الإيقاف يبقى نافذًا حتى تشغّل الوكيل بنفسك من جديد."
                 textSize = 14f
                 setPadding(0, 0, 0, dp(8))
             })
@@ -97,6 +102,11 @@ class PhoneAgentSetupActivity : Activity() {
             append("\nالوكيل السحابي: ").append(if (enabled && accessibility) "يعمل ✅" else "متوقف")
             append("\nHassan Cloud: ").append(if (cloudConfigured) "متصل ✅" else "يحتاج إعداد الرابط والرمز")
         }
-        enableButton.text = if (accessibility) "مراجعة إعدادات إمكانية الوصول" else "تفعيل التحكم — خطوة واحدة"
+        enableButton.text = when {
+            !accessibility -> "تفعيل التحكم — خطوة واحدة"
+            enabled -> "التحكم السحابي يعمل"
+            else -> "تشغيل التحكم السحابي"
+        }
+        enableButton.isEnabled = !enabled || !accessibility
     }
 }
