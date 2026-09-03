@@ -236,6 +236,14 @@ class MainViewModel(
         }
     }
 
+    fun clearFinishedCloudJobs() {
+        viewModelScope.launch { repository.clearFinishedCloudJobs() }
+    }
+
+    fun deleteCloudJobLocally(jobId: String) {
+        viewModelScope.launch { repository.deleteCloudJobLocally(jobId) }
+    }
+
     fun downloadArtifact(artifact: ai.hassan.app.data.ArtifactEntity) {
         viewModelScope.launch { repository.downloadArtifact(artifact) }
     }

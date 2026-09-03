@@ -167,6 +167,17 @@ interface CloudJobDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(job: CloudJobEntity)
+
+    @Query(
+        """
+        DELETE FROM cloud_jobs
+        WHERE UPPER(state) IN ('COMPLETED', 'FAILED', 'CANCELLED', 'CANCELED')
+        """,
+    )
+    suspend fun deleteFinished(): Int
+
+    @Query("DELETE FROM cloud_jobs WHERE id = :id")
+    suspend fun deleteById(id: String)
 }
 
 @Dao
@@ -179,4 +190,13 @@ interface ArtifactDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(artifact: ArtifactEntity)
+
+    @Query(
+        """
+        DELETE FROM artifacts
+        WHERE jobId IS NOT NULL
+          AND jobId NOT IN (SELECT id FROM cloud_jobs)
+        """,
+    )
+    suspend fun deleteOrphans(): Int
 }

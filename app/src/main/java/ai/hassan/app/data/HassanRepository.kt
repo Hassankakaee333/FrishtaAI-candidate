@@ -213,6 +213,18 @@ class HassanRepository(
     suspend fun cancelCloudJob(jobId: String): Result<Unit> =
         cloudTaskOrchestrator.cancelTask(jobId)
 
+    /** Removes finished cloud jobs from the local list (does not affect GitHub history). */
+    suspend fun clearFinishedCloudJobs(): Int {
+        val removed = database.cloudJobDao().deleteFinished()
+        database.artifactDao().deleteOrphans()
+        return removed
+    }
+
+    suspend fun deleteCloudJobLocally(jobId: String) {
+        database.cloudJobDao().deleteById(jobId)
+        database.artifactDao().deleteOrphans()
+    }
+
     suspend fun downloadArtifact(artifact: ArtifactEntity): Result<File> {
         val settings = conversationSettingsStore.read()
         if (!conversationSettingsStore.isCloudConfigured()) {

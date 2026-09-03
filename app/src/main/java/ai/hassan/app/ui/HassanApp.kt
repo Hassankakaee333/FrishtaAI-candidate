@@ -3,6 +3,7 @@ package ai.hassan.app.ui
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -100,6 +101,7 @@ import ai.hassan.app.conversation.HassanTts
 import ai.hassan.app.conversation.LocalHassanChat
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -143,6 +145,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
+
+private val ACTIVE_CLOUD_STATES = setOf(
+    "QUEUED", "RUNNING", "CODING", "VERIFYING", "PLANNING", "TESTING",
+)
 
 private enum class HassanScreen(val title: String, val icon: ImageVector) {
     Home("المحادثة", Icons.Rounded.Forum),
@@ -313,6 +319,7 @@ fun HassanApp(
                             onLaunchBridge = onLaunchBridge,
                             onDownloadArtifact = viewModel::downloadArtifact,
                             onOpenProjects = { screen = HassanScreen.Projects },
+                            onOpenTasks = { screen = HassanScreen.Tasks },
                         )
                         HassanScreen.Projects -> ProjectsScreen(
                             projects = state.projects,
@@ -333,6 +340,8 @@ fun HassanApp(
                             onSync = viewModel::syncCloudJobs,
                             onDownloadArtifact = viewModel::downloadArtifact,
                             onCancelCloudJob = viewModel::cancelCloudJob,
+                            onClearFinished = viewModel::clearFinishedCloudJobs,
+                            onDeleteLocal = viewModel::deleteCloudJobLocally,
                         )
                         HassanScreen.Decisions -> DecisionsScreen(
                             decisions = state.decisions,
@@ -481,6 +490,7 @@ private fun ChatHomeScreen(
     onLaunchBridge: (String, String) -> Unit,
     onDownloadArtifact: (ai.hassan.app.data.ArtifactEntity) -> Unit,
     onOpenProjects: () -> Unit,
+    onOpenTasks: () -> Unit = {},
 ) {
     val conversation = state.conversations.firstOrNull { it.id == state.activeConversationId }
         ?: state.conversations.firstOrNull()
@@ -607,6 +617,12 @@ private fun ChatHomeScreen(
             .navigationBarsPadding()
             .testTag("chat_home"),
     ) {
+        val activeJob = state.cloudJobs
+            .filter { it.state.uppercase() in ACTIVE_CLOUD_STATES }
+            .maxByOrNull { it.updatedAt }
+        if (activeJob != null) {
+            ActiveCloudJobBanner(job = activeJob, onOpenTasks = onOpenTasks)
+        }
         if (projectContext != null) {
             AssistChip(
                 onClick = onOpenProjects,
@@ -717,6 +733,44 @@ private fun ChatHomeScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ActiveCloudJobBanner(
+    job: ai.hassan.app.data.CloudJobEntity,
+    onOpenTasks: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f))
+            .border(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+            .clickable(onClick = onOpenTasks)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .testTag("active_job_banner"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .background(MaterialTheme.colorScheme.primary, CircleShape),
+        )
+        Column(Modifier.weight(1f)) {
+            Text("مهمة جارية", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelMedium)
+            Text(
+                job.goal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        StatusChip(job.state)
+        Text("التفاصيل", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
     }
 }
 
@@ -1133,60 +1187,122 @@ private fun TasksScreen(
     onSync: () -> Unit,
     onDownloadArtifact: (ai.hassan.app.data.ArtifactEntity) -> Unit,
     onCancelCloudJob: (String) -> Unit,
+    onClearFinished: () -> Unit,
+    onDeleteLocal: (String) -> Unit,
 ) {
     val context = LocalContext.current
-    if (tasks.isEmpty() && cloudJobs.isEmpty()) {
-        EmptyState("لا توجد مهام بعد", "تنشأ المهام من المحادثة أو Hassan Cloud.")
-        return
+    val activeStates = ACTIVE_CLOUD_STATES
+    val finishedStates = setOf("COMPLETED", "FAILED", "CANCELLED", "CANCELED")
+    val activeJobs = cloudJobs.filter { it.state.uppercase() in activeStates }
+        .sortedByDescending { it.updatedAt }
+    val finishedJobs = cloudJobs.filter { it.state.uppercase() in finishedStates }
+        .sortedByDescending { it.updatedAt }
+    val otherJobs = cloudJobs.filter {
+        it.state.uppercase() !in activeStates && it.state.uppercase() !in finishedStates
     }
-    LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+
+    LazyColumn(
+        contentPadding = PaddingValues(18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.testTag("tasks_screen"),
+    ) {
         item {
-            OutlinedButton(onClick = onSync, modifier = Modifier.fillMaxWidth().testTag("sync_cloud_jobs")) {
-                Text("مزامنة Hassan Cloud")
+            ElevatedCard(modifier = Modifier.testTag("tasks_how_it_works")) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("كيف تعمل المهام السحابية؟", fontWeight = FontWeight.Bold)
+                    Text(
+                        "1) من المحادثة: «حسّن التطبيق: …» ثم «ابدأ»\n" +
+                            "2) السحابة تنشئ Job على GitHub Actions\n" +
+                            "3) تُبنى نسخة APK (Candidate)\n" +
+                            "4) التطبيق يزامن الحالة، ينزّل APK، ويطلب التثبيت\n" +
+                            "5) عند الفشل: «ارجع للنسخة السابقة»",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "المزامنة تحدث تلقائيًا عند فتح التطبيق، ويمكنك الضغط على «مزامنة» يدويًا.",
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
             }
         }
-        if (cloudJobs.isNotEmpty()) {
-            item { Text("مهام سحابية", fontWeight = FontWeight.Bold) }
-            items(cloudJobs, key = { "cloud_${it.id}" }) { job ->
-                val jobArtifacts = artifacts.filter { it.jobId == job.id }
-                ElevatedCard(modifier = Modifier.testTag("cloud_job_${job.id}")) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(job.goal, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        StatusChip(job.state)
-                        val cancellable = job.state in listOf("QUEUED", "RUNNING", "CODING", "VERIFYING", "PLANNING")
-                        if (cancellable) {
-                            TextButton(
-                                onClick = { onCancelCloudJob(job.id) },
-                                modifier = Modifier.testTag("cancel_cloud_job_${job.id}"),
-                            ) { Text("إلغاء") }
-                        }
-                        job.resultSummary?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 3) }
-                        jobArtifacts.forEach { art ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("📎 ${art.name}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                                TextButton(onClick = { onDownloadArtifact(art) }) { Text("تنزيل") }
-                                TextButton(onClick = {
-                                    val path = art.localPath
-                                    if (!path.isNullOrBlank()) {
-                                        val uri = androidx.core.content.FileProvider.getUriForFile(
-                                            context,
-                                            "${context.packageName}.fileprovider",
-                                            java.io.File(path),
-                                        )
-                                        val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                            type = art.mimeType
-                                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        }
-                                        context.startActivity(android.content.Intent.createChooser(share, "مشاركة"))
-                                    }
-                                }) { Text("مشاركة") }
-                            }
-                        }
+        item {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onSync,
+                    modifier = Modifier.weight(1f).testTag("sync_cloud_jobs"),
+                ) { Text("مزامنة") }
+                OutlinedButton(
+                    onClick = onClearFinished,
+                    enabled = finishedJobs.isNotEmpty(),
+                    modifier = Modifier.weight(1f).testTag("clear_finished_cloud_jobs"),
+                ) { Text("مسح المكتمل/الفاشل") }
+            }
+        }
+
+        if (activeJobs.isEmpty() && finishedJobs.isEmpty() && otherJobs.isEmpty() && tasks.isEmpty()) {
+            item {
+                EmptyStateContent(
+                    "لا توجد مهام بعد",
+                    "ابدأ من المحادثة بطلب مثل «حسّن التطبيق: …» ثم «ابدأ».",
+                )
+            }
+        }
+
+        if (activeJobs.isNotEmpty()) {
+            item { Text("المهمة الجارية", fontWeight = FontWeight.Bold, modifier = Modifier.testTag("active_jobs_header")) }
+            items(activeJobs, key = { "active_${it.id}" }) { job ->
+                ActiveCloudJobCard(
+                    job = job,
+                    artifacts = artifacts.filter { it.jobId == job.id },
+                    onCancel = { onCancelCloudJob(job.id) },
+                    onDownload = onDownloadArtifact,
+                    onShare = { art -> shareArtifact(context, art) },
+                )
+            }
+        } else {
+            item {
+                ElevatedCard(modifier = Modifier.testTag("no_active_job")) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("لا توجد مهمة جارية الآن", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "عند بدء بناء سحابي ستظهر هنا الحالة، السجل، والخطوات الحالية.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
         }
+
+        if (finishedJobs.isNotEmpty()) {
+            item { Text("مكتمل / فاشل (محلي)", fontWeight = FontWeight.Bold) }
+            items(finishedJobs, key = { "done_${it.id}" }) { job ->
+                FinishedCloudJobCard(
+                    job = job,
+                    artifacts = artifacts.filter { it.jobId == job.id },
+                    onDownload = onDownloadArtifact,
+                    onShare = { art -> shareArtifact(context, art) },
+                    onDeleteLocal = { onDeleteLocal(job.id) },
+                )
+            }
+        }
+
+        if (otherJobs.isNotEmpty()) {
+            item { Text("مهام أخرى", fontWeight = FontWeight.Bold) }
+            items(otherJobs, key = { "other_${it.id}" }) { job ->
+                ElevatedCard {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(job.goal, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        StatusChip(job.state)
+                    }
+                }
+            }
+        }
+
         if (tasks.isNotEmpty()) {
             item { Text("مهام محلية", fontWeight = FontWeight.Bold) }
             items(tasks, key = { it.id }) { task ->
@@ -1203,6 +1319,135 @@ private fun TasksScreen(
             }
         }
     }
+}
+
+@Composable
+private fun ActiveCloudJobCard(
+    job: ai.hassan.app.data.CloudJobEntity,
+    artifacts: List<ai.hassan.app.data.ArtifactEntity>,
+    onCancel: () -> Unit,
+    onDownload: (ai.hassan.app.data.ArtifactEntity) -> Unit,
+    onShare: (ai.hassan.app.data.ArtifactEntity) -> Unit,
+) {
+    val steps = cloudJobPipelineSteps(job.state)
+    ElevatedCard(modifier = Modifier.testTag("active_cloud_job_${job.id}")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("جاري التنفيذ", Modifier.weight(1f), fontWeight = FontWeight.Bold)
+                StatusChip(job.state)
+            }
+            Text(job.goal, fontWeight = FontWeight.SemiBold)
+            Text("المعرّف: ${job.id.take(8)}…", style = MaterialTheme.typography.labelSmall)
+            Text("آخر تحديث: ${shortDate(job.updatedAt)}", style = MaterialTheme.typography.labelSmall)
+            Text("مراحل العمل", fontWeight = FontWeight.SemiBold)
+            steps.forEach { step ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(step.marker)
+                    Text(step.label, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            job.resultSummary?.takeIf { it.isNotBlank() }?.let {
+                Text("الملخص", fontWeight = FontWeight.SemiBold)
+                Text(it, style = MaterialTheme.typography.bodySmall)
+            }
+            if (job.log.isNotBlank()) {
+                Text("آخر السجل", fontWeight = FontWeight.SemiBold)
+                Text(
+                    job.log.lines().takeLast(12).joinToString("\n"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("active_job_log"),
+                )
+            }
+            TextButton(onClick = onCancel, modifier = Modifier.testTag("cancel_cloud_job_${job.id}")) {
+                Text("إلغاء المهمة")
+            }
+            artifacts.forEach { art ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("📎 ${art.name}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { onDownload(art) }) { Text("تنزيل") }
+                    TextButton(onClick = { onShare(art) }) { Text("مشاركة") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FinishedCloudJobCard(
+    job: ai.hassan.app.data.CloudJobEntity,
+    artifacts: List<ai.hassan.app.data.ArtifactEntity>,
+    onDownload: (ai.hassan.app.data.ArtifactEntity) -> Unit,
+    onShare: (ai.hassan.app.data.ArtifactEntity) -> Unit,
+    onDeleteLocal: () -> Unit,
+) {
+    ElevatedCard(modifier = Modifier.testTag("finished_cloud_job_${job.id}")) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(job.goal, Modifier.weight(1f), fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                StatusChip(job.state)
+            }
+            job.resultSummary?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 4, overflow = TextOverflow.Ellipsis)
+            }
+            artifacts.forEach { art ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("📎 ${art.name}", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { onDownload(art) }) { Text("تنزيل") }
+                    TextButton(onClick = { onShare(art) }) { Text("مشاركة") }
+                }
+            }
+            TextButton(onClick = onDeleteLocal, modifier = Modifier.testTag("delete_local_job_${job.id}")) {
+                Text("حذف من القائمة")
+            }
+        }
+    }
+}
+
+private data class PipelineStep(val marker: String, val label: String)
+
+private fun cloudJobPipelineSteps(stateRaw: String): List<PipelineStep> {
+    val state = stateRaw.uppercase()
+    val order = listOf(
+        "QUEUED" to "في الطابور",
+        "RUNNING" to "تشغيل السحابة / إعداد البناء",
+        "CODING" to "تعديل المصدر / تسجيل الطلب",
+        "TESTING" to "اختبارات",
+        "VERIFYING" to "التحقق ورفع الملفات",
+        "COMPLETED" to "اكتمل — جاهز للتنزيل/التثبيت",
+    )
+    val failed = state == "FAILED" || state == "CANCELLED" || state == "CANCELED"
+    if (failed) {
+        return listOf(
+            PipelineStep("✓", "بدأت المهمة"),
+            PipelineStep("✗", "توقفت بحالة: $state"),
+        )
+    }
+    val idx = order.indexOfFirst { it.first == state }.let { if (it < 0) 1 else it }
+    return order.mapIndexed { i, (_, label) ->
+        val marker = when {
+            i < idx -> "✓"
+            i == idx -> "●"
+            else -> "○"
+        }
+        PipelineStep(marker, label)
+    }
+}
+
+private fun shareArtifact(context: android.content.Context, art: ai.hassan.app.data.ArtifactEntity) {
+    val path = art.localPath
+    if (path.isNullOrBlank()) return
+    val uri = androidx.core.content.FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        java.io.File(path),
+    )
+    val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+        type = art.mimeType
+        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(android.content.Intent.createChooser(share, "مشاركة"))
 }
 
 @Composable

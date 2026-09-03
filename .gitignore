@@ -28,3 +28,8 @@
 hassan_cloud_prefs.xml
 .cursor/
 
+_*.png
+_*.jpg
+_*.xml
+_job_artifacts/
+frishta-screen*.png
