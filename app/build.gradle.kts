@@ -13,8 +13,8 @@ android {
         applicationId = "ai.hassan.app"
         minSdk = 33
         targetSdk = 36
-        versionCode = 28
-        versionName = "0.5.18"
+        versionCode = 29
+        versionName = "0.5.19"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
