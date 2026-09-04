@@ -5,6 +5,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -29,6 +30,10 @@ data class CloudChatResponse(
     val provider: String? = null,
     val model: String? = null,
     val status: String? = null,
+    val codex_usage: JsonElement? = null,
+    val codexUsage: JsonElement? = null,
+    val rate_limits: JsonElement? = null,
+    val rateLimits: JsonElement? = null,
 )
 
 class CloudConversationClient(
@@ -75,7 +80,15 @@ class CloudConversationClient(
                 } else {
                     val label = parsed.provider?.let(::providerLabel)
                     val suffix = label?.let { "\n\n— $it" }.orEmpty()
-                    ConversationResult.Success(answer = parsed.answer.trim() + suffix)
+                    ConversationResult.Success(
+                        answer = parsed.answer.trim() + suffix,
+                        codexUsage = CodexUsageParser.parse(
+                            parsed.codex_usage
+                                ?: parsed.codexUsage
+                                ?: parsed.rate_limits
+                                ?: parsed.rateLimits,
+                        ),
+                    )
                 }
             }
         }.getOrElse {

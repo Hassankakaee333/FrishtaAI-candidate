@@ -5,6 +5,7 @@ import ai.hassan.app.conversation.CloudChatRequest
 import ai.hassan.app.conversation.CloudChatResponse
 import ai.hassan.app.conversation.ConversationMessage
 import ai.hassan.app.conversation.ConversationResult
+import ai.hassan.app.conversation.CodexUsageParser
 import ai.hassan.app.conversation.LocalHassanChat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -232,6 +233,12 @@ class HassanCloudApi(
                     ConversationResult.Success(
                         answer = parsed.answer.trim(),
                         providerId = LocalHassanChat.normalizeProvider(resolvedProvider),
+                        codexUsage = CodexUsageParser.parse(
+                            parsed.codex_usage
+                                ?: parsed.codexUsage
+                                ?: parsed.rate_limits
+                                ?: parsed.rateLimits,
+                        ),
                     )
                 }
             }

@@ -626,6 +626,7 @@ class HassanRepository(
                 _conversationUi.value = ConversationUiState(
                     providerConfigured = true,
                     isSending = false,
+                    codexUsage = result.codexUsage ?: _conversationUi.value.codexUsage,
                 )
                 addHassanMessage(
                     conversation.id,

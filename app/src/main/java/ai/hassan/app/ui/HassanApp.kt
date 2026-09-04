@@ -174,9 +174,18 @@ private val speechLanguageOptions = listOf(
     SpeechLanguageOption("", "لغة الجهاز"),
 )
 
-private val leadOptions = listOf(
+private val chatProviderOptions = listOf(
     LeadOption("auto", "Frishta Auto"),
     LeadOption("chatgpt", "ChatGPT"),
+    LeadOption("gemini", "Gemini"),
+    LeadOption("claude", "Claude"),
+    LeadOption("deepseek", "DeepSeek"),
+)
+
+// Execution keeps the existing wire id for compatibility while ChatGPT remains unchanged in chat.
+private val executionLeadOptions = listOf(
+    LeadOption("auto", "Frishta Auto"),
+    LeadOption("chatgpt", "Codex"),
     LeadOption("gemini", "Gemini"),
     LeadOption("claude", "Claude"),
     LeadOption("deepseek", "DeepSeek"),
@@ -1054,7 +1063,7 @@ private fun TopBarProviderSelector(
     onSelect: (String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
-    val selected = leadOptions.firstOrNull { it.id == selectedId } ?: leadOptions.first()
+    val selected = chatProviderOptions.firstOrNull { it.id == selectedId } ?: chatProviderOptions.first()
     Box {
         AssistChip(
             onClick = { open = true },
@@ -1068,7 +1077,7 @@ private fun TopBarProviderSelector(
             modifier = Modifier.testTag("provider_selector"),
         )
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            leadOptions.forEach { option ->
+            chatProviderOptions.forEach { option ->
                 DropdownMenuItem(
                     text = { Text(option.label) },
                     onClick = {
@@ -1798,7 +1807,7 @@ private fun SettingsScreen(
                 }
                 Text("مزوّد المحادثة", style = MaterialTheme.typography.labelMedium)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(leadOptions, key = { "basic_chat_${it.id}" }) { option ->
+                    items(chatProviderOptions, key = { "basic_chat_${it.id}" }) { option ->
                         FilterChip(
                             selected = conversationSettings.chatProvider == option.id,
                             onClick = { onUpdateConversationSettings(conversationSettings.copy(chatProvider = option.id)) },
@@ -1863,7 +1872,7 @@ private fun SettingsScreen(
                 )
                 Text("مزوّد المحادثة", style = MaterialTheme.typography.labelMedium)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(leadOptions, key = { "chat_${it.id}" }) { option ->
+                    items(chatProviderOptions, key = { "chat_${it.id}" }) { option ->
                         FilterChip(
                             selected = conversationSettings.chatProvider == option.id,
                             onClick = {
@@ -1940,7 +1949,7 @@ private fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(leadOptions, key = { it.id }) { option ->
+                    items(executionLeadOptions, key = { it.id }) { option ->
                         FilterChip(
                             selected = conversation?.leadBrainId == option.id,
                             onClick = { onSelectLead(option.id) },
@@ -1949,7 +1958,7 @@ private fun SettingsScreen(
                         )
                     }
                 }
-                leadOptions.forEach { option ->
+                executionLeadOptions.forEach { option ->
                     val availability = providerAvailabilityLabel(option.id)
                     if (availability.isNotBlank()) {
                         Text(
@@ -1964,6 +1973,24 @@ private fun SettingsScreen(
         if (conversation?.leadBrainId == "chatgpt") {
             ElevatedCard {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().testTag("codex_usage_card"),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text("رصيد Codex المتبقي", fontWeight = FontWeight.Bold)
+                        val usageWindows = conversationUi.codexUsage?.windows.orEmpty()
+                        if (usageWindows.isEmpty()) {
+                            Text(
+                                "لا توجد قراءة بعد",
+                                modifier = Modifier.testTag("codex_usage_empty"),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            usageWindows.forEach { window ->
+                                Text("${window.label}: ${window.remainingPercent}% متبقي")
+                            }
+                        }
+                    }
                     Text("مستوى تفكير Codex", fontWeight = FontWeight.Bold)
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),

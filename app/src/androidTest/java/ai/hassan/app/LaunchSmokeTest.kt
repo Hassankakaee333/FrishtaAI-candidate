@@ -61,6 +61,8 @@ class LaunchSmokeTest {
         composeRule.onNodeWithTag("settings_scroll").performScrollToNode(hasTestTag("lead_brain_selector"))
         composeRule.onNodeWithTag("lead_chatgpt").performClick()
         composeRule.waitUntilAtLeastOneExists(hasTestTag("codex_effort_selector"), 8_000)
+        composeRule.onNodeWithTag("codex_usage_card").assertExists()
+        composeRule.onNodeWithText("لا توجد قراءة بعد").assertExists()
         composeRule.onNodeWithTag("effort_high").assertExists()
         composeRule.onNodeWithText("عالٍ").performClick()
         composeRule.waitForIdle()

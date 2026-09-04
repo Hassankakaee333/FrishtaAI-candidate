@@ -9,6 +9,7 @@ sealed class ConversationResult {
     data class Success(
         val answer: String,
         val providerId: String? = null,
+        val codexUsage: CodexUsageSnapshot? = null,
     ) : ConversationResult()
     data class NotConfigured(val message: String) : ConversationResult()
     data class Error(val message: String) : ConversationResult()
@@ -43,4 +44,5 @@ data class ConversationUiState(
     val providerConfigured: Boolean = false,
     val statusMessage: String = "لم يتم إعداد مزود المحادثة بعد.",
     val isSending: Boolean = false,
+    val codexUsage: CodexUsageSnapshot? = null,
 )
